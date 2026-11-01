@@ -1,18 +1,13 @@
-// Finds a tool call in model output. Bonsai writes calls the way its chat template teaches:
+// Finds a tool call in model output. Spark writes calls the way its chat template teaches:
 //
-//   <tool_call>
-//   <function=shell>
-//   <parameter=command>
-//   ls ~/Desktop
-//   </parameter>
-//   </function>
-//   </tool_call>
+//   <tool_call>shell<arg_key>command</arg_key><arg_value>ls ~/Desktop</arg_value></tool_call>
 //
 // The stream stops at </tool_call>, so the closing tag is usually missing.
-// As a fallback it also reads a pythonic [shell(command="ls")] and JSON
-// ({"name": "shell", "arguments": {...}}), so other models from Hugging Face work too.
+// As a fallback it also reads Qwen-style <function=…><parameter=…>, a pythonic
+// [shell(command="ls")] and JSON ({"name": "shell", "arguments": {...}}), so other
+// models from Hugging Face work too.
 
-const MARKERS = ["<tool_call>", "<|tool_call_start|>", "<function="];
+const MARKERS = ["<tool_call>", "<|tool_call_start|>", "<function=", "<arg_key>"];
 
 /**
  * @param {string} text model output
@@ -20,7 +15,7 @@ const MARKERS = ["<tool_call>", "<|tool_call_start|>", "<function="];
  * @returns {{text: string, call: {name: string, args: Record<string, unknown>} | null}}
  */
 export function parseToolCall(text, tools) {
-  for (const find of [findXML, findPythonic, findJSON]) {
+  for (const find of [findSpark, findXML, findPythonic, findJSON]) {
     const found = find(text);
     if (!found) continue;
     const call = normalize(found.call, tools);
@@ -51,7 +46,7 @@ export function visibleText(text) {
 function clean(text) {
   return text
     .replace(/<\|?\/?tool_call(_start|_end)?\|?>/g, "")
-    .replace(/<\/?function[^>]*>|<\/?parameter[^>]*>/g, "")
+    .replace(/<\/?function[^>]*>|<\/?parameter[^>]*>|<\/?arg_(key|value)>/g, "")
     .trim();
 }
 
@@ -64,6 +59,17 @@ function xmlValue(raw) {
     } catch {}
   }
   return coerce(v);
+}
+
+/** <tool_call>name<arg_key>k</arg_key><arg_value>v</arg_value>…, closing tags optional at the end. */
+function findSpark(text) {
+  const m = text.match(/<tool_call>\s*([A-Za-z_][\w.-]*)\s*(?=<arg_key>|<\/tool_call>|$)/);
+  if (!m) return null;
+  const args = {};
+  const body = text.slice(m.index + m[0].length);
+  const re = /<arg_key>\s*([^<]+?)\s*<\/arg_key>\s*<arg_value>([\s\S]*?)(?:<\/arg_value>|(?=<arg_key>|<\/tool_call>)|$)/g;
+  for (const a of body.matchAll(re)) args[a[1]] = xmlValue(a[2]);
+  return { start: m.index, call: { name: m[1], args } };
 }
 
 function findXML(text) {

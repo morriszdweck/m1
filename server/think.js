@@ -1,6 +1,6 @@
-// Bonsai thinks inside <think> … </think> before it answers. With Thinking off its
-// chat template writes an empty <think></think>, and the open tag can be missing
-// when the template already added it.
+// Spark thinks inside <think> … </think> before it answers. Its chat template already
+// opens <think>, so the reply usually starts mid-thought and only the close tag shows.
+// At Instant the template closes it instead, and the reply is all answer.
 
 const OPEN_ANY = /^\s*(?:<think>\s*)+/;
 const CLOSE_ANY = /<\/think>/;

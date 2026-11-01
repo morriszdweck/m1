@@ -97,8 +97,8 @@ export const DEFAULTS = {
   toolOutputLimit: 1200,
   maxSteps: 8,
   temperature: 1.0,
-  thinking: true,
-  smallQuant: "Q2_0",
+  reasoningEffort: "medium", // instant | medium | high
+  smallQuant: "Q4_K_M",
   smallURL: "http://127.0.0.1:8280/v1",
   guardianURL: "http://127.0.0.1:8776",
   browserURL: "http://127.0.0.1:8777",
@@ -107,7 +107,10 @@ export const DEFAULTS = {
 const URL_KEYS = new Set(["smallURL", "guardianURL", "browserURL"]);
 /** Download sizes offered for each model, smallest first. Sizes are bytes on Hugging Face. */
 export const QUANTS = {
-  small: [{ id: "Q2_0", label: "Ternary", bytes: 2.56e9, note: "Recommended" }],
+  small: [
+    { id: "Q4_K_M", label: "Balanced", bytes: 3.54e9, note: "Recommended" },
+    { id: "Q8_0", label: "Best", bytes: 4.38e9, note: "Near full quality" },
+  ],
 };
 
 const CHOICES = {
@@ -115,6 +118,7 @@ const CHOICES = {
   personality: Object.keys(PERSONALITIES),
   approvalMode: ["askAlways", "approveForMe", "fullAuto"],
   theme: ["system", "light", "dark"],
+  reasoningEffort: ["instant", "medium", "high"],
 };
 
 const saved = load("settings.json", {});
@@ -128,7 +132,7 @@ if (!saved.personalityV) {
   if (saved.personality === "friendly") delete saved.personality;
   saved.personalityV = 2;
 }
-// Drop saved choices that no longer exist (e.g. K2's Q5_K_M after the switch to Bonsai) and retired keys.
+// Drop saved choices that no longer exist (e.g. an old brain's size or effort level) and retired keys.
 for (const [key, allowed] of Object.entries(CHOICES)) if (key in saved && !allowed.includes(saved[key])) delete saved[key];
 for (const key of Object.keys(saved)) if (!(key in DEFAULTS)) delete saved[key];
 export const settings = { ...DEFAULTS, ...saved };
@@ -156,7 +160,7 @@ export function isLocal(url) {
 }
 
 export const MODELS = {
-  small: { id: "Bonsai-2-9B", label: "Bonsai 2 9B", url: () => settings.smallURL, temperature: () => settings.temperature },
+  small: { id: "Spark-X2.6-4B", label: "Spark X2.6 4B", url: () => settings.smallURL, temperature: () => settings.temperature },
 };
 
 // ---- Event bus (server -> every open tab) ----

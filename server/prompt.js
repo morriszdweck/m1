@@ -1,4 +1,4 @@
-// Builds what Bonsai actually sees: its own tools block and call format,
+// Builds what Spark actually sees: its own tools block and call format,
 // tool results in tool turns, only relevant memory, and history packed
 // newest-first into a budget.
 
@@ -16,51 +16,43 @@ const tilde = (f) => (f.startsWith(HOME) ? "~" + f.slice(HOME.length) : f);
 const now = () =>
   new Date().toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-/** A tool call in Bonsai's own format, the one its chat template teaches. */
-export const xmlCall = (name, args) =>
-  `<tool_call>\n<function=${name}>\n${Object.entries(args ?? {})
-    .map(([k, v]) => `<parameter=${k}>\n${typeof v === "string" ? v : JSON.stringify(v)}\n</parameter>\n`)
-    .join("")}</function>\n</tool_call>`;
+/** A tool call in Spark's own format, the one its chat template writes. */
+export const sparkCall = (name, args) =>
+  `<tool_call>${name}${Object.entries(args ?? {})
+    .map(([k, v]) => `<arg_key>${k}</arg_key><arg_value>${typeof v === "string" ? v : JSON.stringify(v)}</arg_value>`)
+    .join("")}</tool_call>`;
 
 function persona() {
   const name = settings.userName ? ` The user's name is ${settings.userName}.` : "";
   return `${PERSONALITIES[settings.personality] ?? ""}${name}`.trim();
 }
 
-/** The tools block, worded the way Bonsai's chat template writes it. */
+/** The tools block exactly as Spark's chat template writes it, then M1's rules for using it. */
 function toolsBlock(tools) {
   return [
-    "# Tools",
-    "",
+    "## Tools",
     "You have access to the following functions:",
-    "",
     "<tools>",
     ...tools.map(signature),
     "</tools>",
-    "",
-    "If you choose to call a function ONLY reply in the following format with NO suffix:",
-    "",
-    xmlCall("example_function_name", { example_parameter_1: "value_1" }),
-    "",
-    "<IMPORTANT>",
-    "Reminder:",
-    "- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags",
-    "- Required parameters MUST be specified",
-    "- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after",
-    `- Call one function at a time, then wait for its result. Answer chat, math, writing, code and knowledge questions yourself; call a function only when the request needs the ${DEVICE}, files, the web or memory. After a result, answer as soon as you know enough. Use remember for lasting facts about the user.`,
-    "</IMPORTANT>",
   ].join("\n");
 }
 
+const TOOL_RULES = (device) =>
+  `Call one function at a time, then wait for its result. Answer chat, math, writing, code and knowledge questions yourself; call a function only when the request needs the ${device}, files, the web or memory. After a result, answer as soon as you know enough. Use remember for lasting facts about the user.`;
+
 export function systemPrompt({ tools, query, project }) {
+  // Spark's template puts its own tools block right after its built-in system line,
+  // so M1's comes first here and the prompt reads the way Spark was trained on.
   return [
+    tools.length ? `${toolsBlock(tools)}\n` : "",
     `You are M1, a private assistant running locally on the user's ${MACHINE}. ${persona()}`.trim(),
     "Use Markdown when it helps: headings, lists, tables, fenced code blocks with a language, and $...$ or $$...$$ for math.",
     project
       ? `Now: ${now()}. Project folder: ${tilde(project)}. You can only read, write and run commands inside this folder; relative paths start there.`
       : `Now: ${now()}. Workspace: ${tilde(settings.workspace)}`,
     memory.promptBlock(query),
-    tools.length ? `\n${toolsBlock(tools)}` : "",
+    tools.length ? TOOL_RULES(DEVICE) : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -84,12 +76,12 @@ function userWire(message, { latest }) {
   return text;
 }
 
-/** Each step goes back as Bonsai saw it: its call, then the result in a tool turn. */
+/** Each step goes back as Spark wrote it: its call, then the result in a tool turn. */
 function assistantWire(message, { latest }) {
   const out = [];
   for (const step of message.steps ?? []) {
     if (!["done", "error", "denied"].includes(step.status)) continue;
-    out.push({ role: "assistant", content: `${step.note ? step.note + "\n" : ""}${xmlCall(step.tool, step.args)}` });
+    out.push({ role: "assistant", content: `${step.note ? step.note + "\n" : ""}${sparkCall(step.tool, step.args)}` });
     const result = step.status === "denied" ? "The user said no to this action. Don't retry it; tell the user." : (step.result ?? "");
     out.push({ role: "tool", content: latest || result.length <= 240 ? result : result.slice(0, 240) + "…" });
   }

@@ -1,5 +1,5 @@
 // Streaming client for the local llama.cpp server (OpenAI-compatible API).
-// The server runs with --reasoning-format none, so Bonsai's <think> block
+// The server runs with --reasoning-format none, so Spark's <think> block
 // arrives inside the content and M1 splits it out itself (see think.js).
 
 import { isLocal } from "./core.js";
@@ -7,10 +7,11 @@ import { splitThink } from "./think.js";
 
 /**
  * Streams a chat completion. Yields {content}, then {usage} and {timings} when the
- * server reports them. thinking turns Bonsai's reasoning on or off; each mode has
- * its own recommended sampling, and temperature scales from the thinking value.
+ * server reports them. effort is the slider: instant (no thinking), medium (Spark's
+ * low thinking budget) or high. Sampling is XHToken's recommended one.
  */
-export async function* stream({ url, model, messages, temperature = 1.0, maxTokens = 1024, stop, thinking = true, signal }) {
+export async function* stream({ url, model, messages, temperature = 1.0, maxTokens = 1024, stop, effort = "high", signal }) {
+  const kwargs = effort === "instant" ? { enable_thinking: false } : { enable_thinking: true, reasoning_effort: effort === "medium" ? "low" : "high" };
   if (!isLocal(url)) throw new Error("Refusing a model address that isn't on this computer.");
   let res;
   try {
@@ -21,17 +22,16 @@ export async function* stream({ url, model, messages, temperature = 1.0, maxToke
       body: JSON.stringify({
         model,
         messages,
-        temperature: thinking ? temperature : temperature * 0.7,
-        top_p: thinking ? 0.95 : 0.8,
-        top_k: 20,
+        temperature,
+        top_p: 0.95,
+        top_k: 0,
         min_p: 0,
-        presence_penalty: thinking ? 1.0 : 1.5,
         max_tokens: maxTokens,
         stop,
         stream: true,
         stream_options: { include_usage: true },
         cache_prompt: true,
-        chat_template_kwargs: { enable_thinking: thinking },
+        chat_template_kwargs: kwargs,
       }),
     });
   } catch (e) {
@@ -77,6 +77,6 @@ export async function* stream({ url, model, messages, temperature = 1.0, maxToke
 /** Collects a whole completion as text, without the thinking. Small jobs don't think. */
 export async function complete(options) {
   let text = "";
-  for await (const part of stream({ thinking: false, ...options })) if (part.content) text += part.content;
+  for await (const part of stream({ effort: "instant", ...options })) if (part.content) text += part.content;
   return splitThink(text).rest.trim();
 }

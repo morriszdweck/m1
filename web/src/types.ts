@@ -99,6 +99,9 @@ export type ModelResolution = {
 
 export type ApprovalMode = "askAlways" | "approveForMe" | "fullAuto";
 
+/** How long Spark thinks before it answers. Instant doesn't think. */
+export type ReasoningEffort = "instant" | "medium" | "high";
+
 
 export type Settings = {
   userName: string;
@@ -112,7 +115,7 @@ export type Settings = {
   toolOutputLimit: number;
   maxSteps: number;
   temperature: number;
-  thinking: boolean;
+  reasoningEffort: ReasoningEffort;
   smallQuant: string;
   smallURL: string;
   guardianURL: string;

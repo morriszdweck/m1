@@ -1,5 +1,5 @@
 // Everything the agent can do. Each tool lists its parameters once; that list
-// becomes the tool's entry in Bonsai's <tools> block.
+// becomes the tool's entry in Spark's <tools> block.
 //
 // kind: "read"  only looks at things, so Approve for Me runs it without asking
 //       "safe"  changes nothing outside the app (memory, reminders)
@@ -363,18 +363,15 @@ export const toolMap = new Map(TOOLS.map((t) => [t.name, t]));
 /** Tools the model can use right now. */
 export const activeTools = () => TOOLS.filter((t) => !t.available || t.available());
 
-/** One tool as a JSON line, the way Bonsai's chat template lists tools. */
+/** One tool as a compact JSON line, the way Spark's chat template lists tools. */
 export const signature = (t) =>
   JSON.stringify({
-    type: "function",
-    function: {
-      name: t.name,
-      description: t.desc,
-      parameters: {
-        type: "object",
-        properties: Object.fromEntries(t.params.map((x) => [x.name, { type: x.type, description: x.desc }])),
-        required: t.params.filter((x) => x.required !== false).map((x) => x.name),
-      },
+    name: t.name,
+    description: t.desc,
+    parameters: {
+      type: "object",
+      properties: Object.fromEntries(t.params.map((x) => [x.name, { type: x.type, description: x.desc }])),
+      required: t.params.filter((x) => x.required !== false).map((x) => x.name),
     },
   });
 

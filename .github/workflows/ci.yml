@@ -124,7 +124,7 @@ jobs:
         run: cat "$HOME/.local/share/m1/logs/"*.log || true
 
   models:
-    name: Bonsai 2 9B answers on ${{ matrix.os }} (CPU)
+    name: Spark X2.6 4B answers on ${{ matrix.os }} (CPU)
     strategy:
       fail-fast: false
       matrix:
@@ -137,7 +137,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci && npm run build
-      - name: Download the engine and Bonsai 2 9B, chat and run a tool
+      - name: Download the engine and Spark X2.6 4B, chat and run a tool
         run: node scripts/smoke.mjs --models
         timeout-minutes: 40
 

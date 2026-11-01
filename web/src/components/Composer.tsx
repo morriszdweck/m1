@@ -1,4 +1,4 @@
-// The message box: text and text files, the permissions menu, the Thinking switch at the
+// The message box: text and text files, the permissions menu, reasoning effort at the
 // right, dictation through Parakeet 110M, and the project chin under a new chat.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -8,7 +8,7 @@ import { Mic as Microphone, wav } from "../audio/capture";
 import { errorToast, go, part, toast, useStore } from "../store";
 import type { ApprovalMode, Attachment, Chat, Part } from "../types";
 import { DEVICE, cx } from "../util";
-import { ThinkingToggle } from "./ThinkingToggle";
+import { EffortMenu } from "./EffortMenu";
 import { ProjectPicker } from "./ProjectPicker";
 import { Menu, Spinner } from "./ui";
 
@@ -359,7 +359,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
               }))}
             />
             <div className="composer-spacer" />
-            <ThinkingToggle />
+            <EffortMenu />
             <button
               className="round-btn ghost"
               onClick={startDictation}

@@ -15,10 +15,10 @@ import { activeTools, runTool, toolMap } from "./tools.js";
 import { uploads } from "./uploads.js";
 
 const uid = () => crypto.randomUUID();
-// Bonsai runs one tool per step: stop as soon as its call closes.
+// Spark runs one tool per step: stop as soon as its call closes.
 const STOPS = ["</tool_call>"];
-/** How much Bonsai may write per step, thinking included. Thinking can take thousands of tokens. */
-const STEP_TOKENS = { thinking: 12288, quick: 2048 };
+/** How much Spark may write per step at each effort, thinking included. */
+const STEP_TOKENS = { instant: 2048, medium: 8192, high: 16384 };
 const OPEN = ["pending", "checking", "approval", "running"];
 
 // Small models reach for tools on plain asks ("make a table", "explain X") and
@@ -220,9 +220,9 @@ export const agent = {
         let last = 0;
         const thinkStart = Date.now();
         let thinkEnd = 0;
-        // The Thinking toggle: Bonsai reasons before it answers, or answers straight away.
-        const thinking = settings.thinking !== false;
-        const maxTokens = Math.max(256, Math.min(STEP_TOKENS[thinking ? "thinking" : "quick"], context - budget));
+        // The effort slider: Spark answers straight away (Instant), thinks briefly (Medium) or thinks long (High).
+        const effort = STEP_TOKENS[settings.reasoningEffort] ? settings.reasoningEffort : "medium";
+        const maxTokens = Math.max(256, Math.min(STEP_TOKENS[effort], context - budget));
         for await (const part of stream({
           url: model.url(),
           model: model.id,
@@ -230,7 +230,7 @@ export const agent = {
           temperature: model.temperature(),
           maxTokens,
           stop: STOPS,
-          thinking,
+          effort,
           signal,
         })) {
           if (part.content) {
@@ -262,7 +262,7 @@ export const agent = {
         live = "";
         if (!call) {
           reply.content =
-            text || (inline.done ? "I couldn't come up with a reply. Try asking another way." : "I ran out of room while thinking. Turn off Thinking, or ask a smaller question.");
+            text || (inline.done ? "I couldn't come up with a reply. Try asking another way." : "I ran out of room while thinking. Try a lower effort, or ask a smaller question.");
           break;
         }
         if (final) {

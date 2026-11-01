@@ -2,7 +2,7 @@
 //
 //   node scripts/smoke.mjs            the server, its page and the API
 //   node scripts/smoke.mjs --models   also downloads the AI engine and
-//                                     Bonsai 2 9B, then has it answer (about 2.6 GB)
+//                                     Spark X2.6 4B, then has it answer (about 3.5 GB)
 //   node scripts/smoke.mjs --helpers  also installs and starts Auto 150M and the
 //                                     Web helper (about 1.2 GB)
 //
@@ -193,16 +193,16 @@ check(state.dataDir === home, "it keeps its files in the data folder it was give
 check(state.routines.length > 0, "starter routines are there");
 
 if (MODELS) {
-  await call("PATCH", "/api/settings", { thinking: false });
+  await call("PATCH", "/api/settings", { reasoningEffort: "instant" });
   await call("POST", "/api/parts/install", { ids: ["engine", "small"] });
-  await waitFor("Bonsai 2 9B", (s) => s.parts.find((p) => p.id === "small" && p.status === "running"), 60);
+  await waitFor("Spark X2.6 4B", (s) => s.parts.find((p) => p.id === "small" && p.status === "running"), 60);
   const engine = (await call("GET", "/api/state")).parts.find((p) => p.id === "engine");
-  check(true, `Bonsai 2 9B runs (${engine.detail ?? "engine installed"})`);
+  check(true, `Spark X2.6 4B runs (${engine.detail ?? "engine installed"})`);
 
   const chat = await call("POST", "/api/chats", { text: "Reply with one word: what color is a clear daytime sky?" });
   const reply = await answer(chat.id, "an answer");
-  check(reply.status === "done" && reply.content.trim().length > 0, `Bonsai 2 9B answered: ${JSON.stringify(reply.content.trim().slice(0, 80))}`);
-  check(reply.model === "small", "the message went to Bonsai 2 9B");
+  check(reply.status === "done" && reply.content.trim().length > 0, `Spark X2.6 4B answered: ${JSON.stringify(reply.content.trim().slice(0, 80))}`);
+  check(reply.model === "small", "the message went to Spark X2.6 4B");
 
   // A small model doesn't always pick a tool, so this only fails when a tool it picked breaks.
   const tool = await call("POST", "/api/chats", { text: "Run this shell command and tell me what it prints: echo m1-smoke-ok" });
