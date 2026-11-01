@@ -1,5 +1,5 @@
-// The message box: text and text files, the permissions and reasoning effort menus,
-// and the project chin under a new chat.
+// The message box: text and text files, the permissions menu, reasoning effort at the
+// right, and the project chin under a new chat.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, FileText, Paperclip, ShieldCheck, ShieldQuestion, Square, X, Zap } from "lucide-react";
@@ -276,8 +276,8 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
                 onClick: () => api("PATCH", "/api/settings", { approvalMode: m.value }).catch(errorToast),
               }))}
             />
-            <EffortMenu />
             <div className="composer-spacer" />
+            <EffortMenu />
             {busy ? (
               <button className="round-btn primary" onClick={() => api("POST", `/api/chats/${chat!.id}/stop`).catch(errorToast)} aria-label="Stop" title="Stop">
                 <Square size={13} fill="currentColor" />

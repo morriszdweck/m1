@@ -2931,3 +2931,53 @@ input[type="range"] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Reasoning effort: a button at the right of the message box opens this slider. */
+.effort-pop {
+  padding: 8px 10px 10px;
+}
+.effort-head {
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--fg);
+}
+.effort-head > span {
+  color: var(--fg-3);
+}
+.effort-track {
+  position: relative;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--hover-strong);
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+.effort-track:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.effort-tick,
+.effort-thumb {
+  position: absolute;
+  top: 50%;
+  translate: -50% -50%;
+}
+.effort-tick {
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--fg-3);
+  opacity: 0.45;
+}
+.effort-tick.hidden {
+  visibility: hidden;
+}
+.effort-thumb {
+  width: 22px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: left 0.15s ease;
+}
