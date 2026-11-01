@@ -121,6 +121,9 @@ if ("temperatureV" in saved) {
   if (saved.temperature === 0.65) delete saved.temperature;
   delete saved.temperatureV;
 }
+// Drop saved choices that no longer exist (e.g. K2's Q5_K_M after the switch to Bonsai) and retired keys.
+for (const [key, allowed] of Object.entries(CHOICES)) if (key in saved && !allowed.includes(saved[key])) delete saved[key];
+for (const key of Object.keys(saved)) if (!(key in DEFAULTS)) delete saved[key];
 export const settings = { ...DEFAULTS, ...saved };
 
 /** Applies only known keys of the right type. Every endpoint must stay on this machine. */
