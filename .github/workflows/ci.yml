@@ -68,9 +68,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: sudo apt-get update && sudo apt-get install -y xvfb xclip imagemagick ffmpeg pandoc libnotify-bin dunst dbus-x11
+      - run: sudo apt-get update && sudo apt-get install -y xvfb xclip imagemagick pandoc libnotify-bin dunst dbus-x11
       - run: npm ci --omit=dev
-      - name: Check the clipboard, screen, conversions and ports
+      - name: Check the clipboard, screen, documents and ports
         run: |
           xvfb-run -a dbus-run-session -- bash -c '
             dunst & sleep 1
@@ -124,7 +124,7 @@ jobs:
         run: cat "$HOME/.local/share/m1/logs/"*.log || true
 
   models:
-    name: LFM3 1.7B answers on ${{ matrix.os }} (CPU)
+    name: K2 Horizon 3.7B answers on ${{ matrix.os }} (CPU)
     strategy:
       fail-fast: false
       matrix:
@@ -137,23 +137,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci && npm run build
-      - name: Download the engine and the smallest LFM3 1.7B, chat and run a tool
+      - name: Download the engine and the smallest K2 Horizon 3.7B, chat and run a tool
         run: node scripts/smoke.mjs --models
         timeout-minutes: 40
 
-  omni:
-    name: LFM3 Omni 2B speaks, listens and sees on Linux (CPU)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci && npm run build
-      - name: Download the engine and the smallest Omni, then speak, transcribe and describe a picture
-        run: node scripts/smoke.mjs --omni
-        timeout-minutes: 50
 
   helpers:
     name: Safety and Web helpers on Linux

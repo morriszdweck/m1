@@ -1,32 +1,20 @@
-// The message box: text, files and pictures, a screenshot of your screen,
-// dictation through Omni, and a button into voice chat.
+// The message box: text and text files, the permissions menu, the project
+// picker and the reasoning effort slider.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  ArrowUp,
-  AudioLines,
-  Check,
-  FileText,
-  Mic,
-  Monitor,
-  Music,
-  Paperclip,
-  Plus,
-  ShieldCheck,
-  ShieldQuestion,
-  Square,
-  X,
-  Zap,
-} from "lucide-react";
-import { api, fileURL, transcribe, upload } from "../api";
-import { Mic as Microphone, wav } from "../audio/capture";
-import { errorToast, go, part, toast, useStore } from "../store";
+import { ArrowUp, FileText, Paperclip, ShieldCheck, ShieldQuestion, Square, X, Zap } from "lucide-react";
+import { api, upload } from "../api";
+import { errorToast, go, toast, useStore } from "../store";
 import type { ApprovalMode, Attachment, Chat, Part } from "../types";
-import { DEVICE, captureScreen, cx, prepareImage } from "../util";
+import { DEVICE, cx } from "../util";
+import { EffortSlider } from "./EffortSlider";
 import { ProjectPicker } from "./ProjectPicker";
 import { Menu, Spinner } from "./ui";
 
-type Pending = { key: string; name: string; kind: Attachment["kind"]; preview?: string; uploaded?: Attachment; failed?: boolean };
+type Pending = { key: string; name: string; uploaded?: Attachment };
+
+/** M1 reads text, so pictures, audio and video are turned away before uploading. */
+const isMedia = (file: File) => /^(image|audio|video)\//.test(file.type) || /\.(png|jpe?g|gif|webp|heic|bmp|tiff|wav|m4a|mp3|aac|aiff?|caf|flac|mp4|mov)$/i.test(file.name);
 
 export const MODES: { value: ApprovalMode; label: string; detail: string; icon: JSX.Element }[] = [
   { value: "askAlways", label: "Ask for Approval", detail: "Asks you before every action.", icon: <ShieldQuestion size={15} /> },
@@ -41,9 +29,6 @@ export function modeNote(guardian: Part | undefined, wanted: boolean) {
   if (guardian?.status === "installed" || guardian?.status === "starting") return "Starts Auto 150M first.";
   return `Downloads Auto 150M first (${guardian?.size ?? "about 1.1 GB"}).`;
 }
-
-const kindOf = (file: File): Attachment["kind"] =>
-  file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : /^text\/|json|xml|javascript/.test(file.type) ? "text" : "other";
 
 export function fill(text: string) {
   window.dispatchEvent(new CustomEvent("la:fill", { detail: text }));
@@ -64,14 +49,9 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
   });
   const [files, setFiles] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [recording, setRecording] = useState<null | "on" | "busy">(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [level, setLevel] = useState(0);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const mic = useRef<{ mic: Microphone; chunks: Int16Array[]; started: number } | null>(null);
   const busy = chat ? running.includes(chat.id) : false;
-  const omniUp = part(parts, "omni")?.status === "running";
 
   const keepDraft = useCallback(
     (value: string) => {
@@ -95,7 +75,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
     el.style.height = "0px";
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, []);
-  useLayoutEffect(fit, [text, recording, fit]);
+  useLayoutEffect(fit, [text, fit]);
   useEffect(() => {
     const el = area.current?.parentElement;
     if (!el) return;
@@ -108,7 +88,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [fit, recording]);
+  }, [fit]);
 
   useEffect(() => {
     const onFill = (e: Event) => {
@@ -123,22 +103,21 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
     if (autoFocus) area.current?.focus();
   }, [autoFocus, chat?.id]);
 
-  const addFiles = useCallback(async (list: File[] | Blob[], names?: string[]) => {
-    for (let i = 0; i < list.length; i++) {
-      const raw = list[i];
-      const file = raw instanceof File ? raw : new File([raw], names?.[i] ?? "file", { type: raw.type });
+  const addFiles = useCallback(async (list: File[]) => {
+    for (const file of list) {
+      if (isMedia(file)) {
+        toast(`M1 reads text files and documents, not pictures or audio. ${file.name} wasn't added.`, "error");
+        continue;
+      }
       if (file.size > 25 * 1024 * 1024) {
         toast(`${file.name} is too big (25 MB at most).`, "error");
         continue;
       }
       const key = crypto.randomUUID();
-      const kind = kindOf(file);
-      const preview = kind === "image" ? URL.createObjectURL(file) : undefined;
-      setFiles((f) => [...f, { key, name: file.name, kind, preview }]);
+      setFiles((f) => [...f, { key, name: file.name }]);
       try {
-        const { blob, name } = kind === "image" ? await prepareImage(file) : { blob: file, name: file.name };
-        const uploaded: Attachment = await upload(blob, name);
-        setFiles((f) => f.map((p) => (p.key === key ? { ...p, uploaded, kind: uploaded.kind } : p)));
+        const uploaded: Attachment = await upload(file, file.name);
+        setFiles((f) => f.map((p) => (p.key === key ? { ...p, uploaded } : p)));
       } catch (e) {
         errorToast(e);
         setFiles((f) => f.filter((p) => p.key !== key));
@@ -180,7 +159,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
   }, [addFiles]);
 
   const uploading = files.some((f) => !f.uploaded);
-  const canSend = !busy && !uploading && (text.trim().length > 0 || files.length > 0) && recording === null;
+  const canSend = !busy && !uploading && (text.trim().length > 0 || files.length > 0);
 
   async function send() {
     if (!canSend) return;
@@ -202,62 +181,6 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
     }
   }
 
-  async function lookAtScreen() {
-    if (!omniUp) return toast("Seeing your screen needs Eyes and ears. Set it up in Settings → Downloads.", "error");
-    try {
-      const shot = await captureScreen();
-      await addFiles([shot], [`Screen ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.jpg`]);
-      if (!text.trim()) setText("What's on my screen?");
-      area.current?.focus();
-    } catch (e) {
-      if ((e as Error).name !== "NotAllowedError") errorToast(e);
-    }
-  }
-
-  async function startDictation() {
-    if (!omniUp) return toast("Dictation needs Eyes and ears. Set it up in Settings → Downloads.", "error");
-    const chunks: Int16Array[] = [];
-    const m = new Microphone(16000, (f) => {
-      chunks.push(f.pcm);
-      setLevel(f.rms);
-    });
-    try {
-      await m.start();
-    } catch {
-      return toast("I can't use the microphone. Allow it in your browser's site settings.", "error");
-    }
-    mic.current = { mic: m, chunks, started: Date.now() };
-    setElapsed(0);
-    setRecording("on");
-  }
-
-  useEffect(() => {
-    if (recording !== "on") return;
-    const t = setInterval(() => setElapsed(Date.now() - (mic.current?.started ?? Date.now())), 200);
-    return () => clearInterval(t);
-  }, [recording]);
-
-  async function stopDictation(keep: boolean) {
-    const current = mic.current;
-    mic.current = null;
-    current?.mic.stop();
-    if (!keep || !current || current.chunks.length < 10) {
-      setRecording(null);
-      return;
-    }
-    setRecording("busy");
-    try {
-      const said = await transcribe(wav(current.chunks, 16000));
-      if (said) setText((t) => (t.trim() ? `${t.trimEnd()} ${said}` : said));
-      else toast("I didn't catch that. Try again a little closer to the mic.");
-    } catch (e) {
-      errorToast(e);
-    } finally {
-      setRecording(null);
-      area.current?.focus();
-    }
-  }
-
   const mode = MODES.find((m) => m.value === settings?.approvalMode) ?? MODES[0];
 
   return (
@@ -268,19 +191,15 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
           <div>Drop files to add them</div>
         </div>
       )}
-      <div className={cx("composer", recording && "recording")}>
+      <div className="composer">
         {files.length > 0 && (
           <div className="attachments">
             {files.map((f) => (
-              <div key={f.key} className={cx("attachment", f.kind === "image" && "image")}>
-                {f.kind === "image" ? (
-                  <img src={f.preview ?? (f.uploaded ? fileURL(f.uploaded.id) : undefined)} alt={f.name} />
-                ) : (
-                  <>
-                    <span className="attachment-icon">{f.kind === "audio" ? <Music size={16} /> : <FileText size={16} />}</span>
-                    <span className="attachment-name">{f.name}</span>
-                  </>
-                )}
+              <div key={f.key} className="attachment">
+                <span className="attachment-icon">
+                  <FileText size={16} />
+                </span>
+                <span className="attachment-name">{f.name}</span>
                 {!f.uploaded && (
                   <span className="attachment-busy">
                     <Spinner size={14} />
@@ -294,29 +213,6 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
           </div>
         )}
 
-        {recording ? (
-          <div className="dictation">
-            <span className="rec-dot" />
-            <span className="rec-time">{recording === "busy" ? "Writing it down…" : `${Math.floor(elapsed / 60000)}:${String(Math.floor(elapsed / 1000) % 60).padStart(2, "0")}`}</span>
-            <div className="rec-level">
-              {Array.from({ length: 28 }, (_, i) => (
-                <span key={i} style={{ height: `${Math.max(3, Math.min(22, level * 400 * (0.5 + Math.abs(Math.sin(i * 1.7 + elapsed / 180)))))}px` }} />
-              ))}
-            </div>
-            {recording === "busy" ? (
-              <Spinner />
-            ) : (
-              <>
-                <button className="round-btn ghost" onClick={() => stopDictation(false)} aria-label="Cancel dictation">
-                  <X size={16} />
-                </button>
-                <button className="round-btn primary" onClick={() => stopDictation(true)} aria-label="Finish dictation">
-                  <Check size={16} />
-                </button>
-              </>
-            )}
-          </div>
-        ) : (
           <textarea
             ref={area}
             value={text}
@@ -340,22 +236,11 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
               }
             }}
           />
-        )}
 
-        {!recording && (
           <div className="composer-row">
-            <Menu
-              side="top"
-              trigger={(open, toggle) => (
-                <button className={cx("round-btn ghost", open && "active")} onClick={toggle} aria-label="Add">
-                  <Plus size={18} />
-                </button>
-              )}
-              items={[
-                { label: "Add photos and files", icon: <Paperclip size={15} />, onClick: () => picker.current?.click() },
-                { label: "Look at my screen", icon: <Monitor size={15} />, onClick: lookAtScreen },
-              ]}
-            />
+            <button className="round-btn ghost" onClick={() => picker.current?.click()} aria-label="Add files" title="Add text files and documents">
+              <Paperclip size={17} />
+            </button>
             <input
               ref={picker}
               type="file"
@@ -391,27 +276,20 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
                 onClick: () => api("PATCH", "/api/settings", { approvalMode: m.value }).catch(errorToast),
               }))}
             />
+            <ProjectPicker chat={chat} />
+            <EffortSlider />
             <div className="composer-spacer" />
-            <button className="round-btn ghost" onClick={startDictation} aria-label="Dictate" title="Dictate">
-              <Mic size={17} />
-            </button>
             {busy ? (
               <button className="round-btn primary" onClick={() => api("POST", `/api/chats/${chat!.id}/stop`).catch(errorToast)} aria-label="Stop" title="Stop">
                 <Square size={13} fill="currentColor" />
               </button>
-            ) : text.trim() || files.length ? (
+            ) : (
               <button className="round-btn primary" onClick={send} disabled={!canSend} aria-label="Send" title="Send">
                 {uploading ? <Spinner size={14} /> : <ArrowUp size={18} />}
               </button>
-            ) : (
-              <button className="round-btn primary voice" onClick={() => go(chat ? `#/voice/${chat.id}` : "#/voice")} aria-label="Voice chat" title="Voice chat">
-                <AudioLines size={18} />
-              </button>
             )}
           </div>
-        )}
       </div>
-      <ProjectPicker chat={chat} />
     </div>
   );
 }

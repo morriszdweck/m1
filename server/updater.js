@@ -14,7 +14,6 @@ import path from "node:path";
 import { DIRS, ROOT, bus, load, run, save, settings } from "./core.js";
 import { agent } from "./agent.js";
 import { backends } from "./backends.js";
-import { voiceCalls } from "./voice.js";
 
 const read = (file) => {
   try {
@@ -44,7 +43,7 @@ const managed = (() => {
   }
 })();
 
-const idle = () => agent.running.length === 0 && voiceCalls.size === 0 && !backends.busy;
+const idle = () => agent.running.length === 0 && !backends.busy;
 
 class Updater {
   /** idle | checking | downloading | ready | updating | error */

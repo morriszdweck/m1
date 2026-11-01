@@ -1,5 +1,5 @@
 // Checks the parts of M1 that talk to the desktop: the shell, the
-// clipboard, screenshots, picture, audio and document conversion, and finding
+// clipboard, document conversion, and finding
 // which program holds a port. Run it inside a desktop session (CI uses xvfb-run).
 //
 //   node scripts/desktop-check.mjs
@@ -41,32 +41,6 @@ await check("the clipboard", async () => {
   const back = (await platform.readClipboard()).trim();
   assert(back === text, `read back ${JSON.stringify(back)}`);
   return platform.copyCommand();
-});
-
-await check("seeing the screen", async () => {
-  await platform.screenshot(file("screen.png"));
-  const size = fs.statSync(file("screen.png")).size;
-  assert(size > 0, "empty screenshot");
-  return `${size} bytes`;
-});
-
-await check("pictures for Omni", async () => {
-  const src = fs.existsSync(file("screen.png")) ? file("screen.png") : null;
-  assert(src, "no picture to convert");
-  const { data, mime } = await platform.pictureForModel(src, file("screen.jpg"));
-  assert(data.length > 0 && mime === "image/jpeg", `${mime}, ${data.length} bytes`);
-  return `${mime}, ${data.length} bytes`;
-});
-
-await check("audio for Omni", async () => {
-  await run("ffmpeg", ["-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-ar", "44100", "-ac", "2", file("tone.mp3")]);
-  await platform.toWav(file("tone.mp3"), file("tone.wav"));
-  const head = fs.readFileSync(file("tone.wav")).subarray(0, 44);
-  assert(head.toString("ascii", 0, 4) === "RIFF", "not a WAV file");
-  const rate = head.readUInt32LE(24);
-  const channels = head.readUInt16LE(22);
-  assert(rate === 16000 && channels === 1, `${rate} Hz, ${channels} channels`);
-  return "16 kHz mono";
 });
 
 await check("documents", async () => {

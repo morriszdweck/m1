@@ -7,7 +7,6 @@ import type { ActivityEntry, Chat, Idea, Part, Reminder, Routine, Settings, Snap
 export type Toast = { id: number; text: string; tone?: "error" | "info" };
 export type Route =
   | { page: "chat"; chatId?: string }
-  | { page: "voice"; chatId?: string }
   | { page: "foryou" }
   | { page: "routines" }
   | { page: "memory" }
@@ -37,7 +36,6 @@ type State = {
   settingsOpen: string | null;
   sidebarOpen: boolean;
   toasts: Toast[];
-  speaking: string | null;
   /** The project folder picked for the next new chat. */
   draftProject: string | null;
 };
@@ -65,7 +63,6 @@ export const useStore = create<State>(() => ({
   settingsOpen: null,
   sidebarOpen: false,
   toasts: [],
-  speaking: null,
   draftProject: null,
 }));
 
@@ -77,8 +74,6 @@ const get = useStore.getState;
 function parseRoute(): Route {
   const [page, id] = location.hash.replace(/^#\/?/, "").split("/");
   switch (page) {
-    case "voice":
-      return { page: "voice", chatId: id };
     case "foryou":
     case "routines":
     case "memory":
@@ -260,5 +255,5 @@ export const pendingApprovals = (chats: Chat[], chatId?: string) => {
   return out;
 };
 
-export const modelsReady = (parts: Part[]) => parts.some((p) => (p.id === "small" || p.id === "omni") && p.status === "running");
+export const modelsReady = (parts: Part[]) => parts.some((p) => p.id === "small" && p.status === "running");
 export const part = (parts: Part[], id: Part["id"]) => parts.find((p) => p.id === id);

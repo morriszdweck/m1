@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { stopSpeaking } from "./audio/speak";
 import { ApprovalDock } from "./components/ApprovalDock";
 import { ChatView } from "./components/ChatView";
 import { Activity, ForYou, Memory, Routines } from "./components/Pages";
@@ -7,7 +6,6 @@ import { SettingsModal, Setup } from "./components/Settings";
 import { Toasts } from "./components/Shell";
 import { Logo, Sidebar } from "./components/Sidebar";
 import { Spinner } from "./components/ui";
-import { VoiceView } from "./components/VoiceView";
 import { connect, go, useStore } from "./store";
 
 function useTheme() {
@@ -34,7 +32,7 @@ function useShortcuts() {
       } else if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         document.querySelector<HTMLInputElement>(".search input")?.focus();
-      } else if (e.key === "Escape" && useStore.getState().speaking) stopSpeaking();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -64,7 +62,7 @@ export function App() {
     );
   }
 
-  const hasModel = parts.some((p) => (p.id === "small" || p.id === "omni") && ["installed", "starting", "running"].includes(p.status));
+  const hasModel = parts.some((p) => p.id === "small" && ["installed", "starting", "running"].includes(p.status));
   if (!hasModel) {
     return (
       <>
@@ -76,9 +74,6 @@ export function App() {
 
   let page;
   switch (route.page) {
-    case "voice":
-      page = <VoiceView chatId={route.chatId} />;
-      break;
     case "foryou":
       page = <ForYou />;
       break;
@@ -100,7 +95,7 @@ export function App() {
       <Sidebar />
       <main className="main">
         {page}
-        {route.page !== "chat" && route.page !== "voice" && (
+        {route.page !== "chat" && (
           <div className="floating-approval">
             <ApprovalDock showChat />
           </div>

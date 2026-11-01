@@ -3,7 +3,7 @@
 // installer as the one-line command) and shows it. The agent updates itself,
 // so this shell rarely needs a new version.
 
-const { app, BrowserWindow, Menu, desktopCapturer, nativeTheme, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, nativeTheme, session, shell } = require("electron");
 const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -168,20 +168,10 @@ app.whenReady().then(() => {
       { role: "help", submenu: [{ label: "M1 Website", click: () => shell.openExternal("https://m1.mincoffical.codes") }] },
     ]),
   );
-  // Microphone, camera, screen and notifications, for M1's own page only.
-  const allowed = new Set(["media", "display-capture", "notifications", "clipboard-read", "clipboard-sanitized-write", "fullscreen"]);
+  // Notifications and the clipboard, for M1's own page only.
+  const allowed = new Set(["notifications", "clipboard-read", "clipboard-sanitized-write", "fullscreen"]);
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => callback(allowed.has(permission) && isLocal(details.requestingUrl)));
   session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => allowed.has(permission) && isLocal(origin));
-  // "Look at my screen": share the whole main screen.
-  session.defaultSession.setDisplayMediaRequestHandler(
-    (_request, callback) => {
-      desktopCapturer
-        .getSources({ types: ["screen"] })
-        .then((sources) => callback(sources[0] ? { video: sources[0] } : {}))
-        .catch(() => callback({}));
-    },
-    { useSystemPicker: true },
-  );
   open();
 });
 

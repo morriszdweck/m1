@@ -1,6 +1,5 @@
 // Everything the agent can do. Each tool lists its parameters once; that list
-// becomes the one-line signature in the text prompt and the JSON schema for
-// Omni's realtime voice session.
+// becomes the tool's entry in K2 Horizon's <ifm|tools> block.
 //
 // kind: "read"  only looks at things, so Approve for Me runs it without asking
 //       "safe"  changes nothing outside the app (memory, reminders)
@@ -13,8 +12,7 @@ import path from "node:path";
 import { DIRS, SHELL, bus, isLocal, load, save, settings, shell } from "./core.js";
 import { backends } from "./backends.js";
 import { memory } from "./memory.js";
-import { look, transcribe } from "./omni.js";
-import { notify, openApp, openPath, pictureForModel, readClipboard, screenshot, toWav, writeClipboard } from "./platform.js";
+import { notify, openApp, openPath, readClipboard, writeClipboard } from "./platform.js";
 import { guard, reachesOut, sandboxed } from "./project.js";
 
 const HOME = os.homedir();
@@ -167,7 +165,6 @@ export function cancelReminder(id) {
 
 // ---- Tools ----
 
-const omniRunning = () => backends.running("omni");
 const browserRunning = () => backends.running("browser");
 
 export const TOOLS = [
@@ -186,13 +183,14 @@ export const TOOLS = [
     kind: "read",
     limit: 3,
     label: (a, project) => `Read ${tilde(expand(a.path, project))}`,
-    run(a, ctx) {
+    // Async, so a folder macOS is still asking about (Desktop, Documents) holds up only this step.
+    async run(a, ctx) {
       const file = at(a.path, ctx);
-      const stat = fs.statSync(file);
+      const stat = await fs.promises.stat(file);
       if (stat.isDirectory()) return `${tilde(file)} is a folder. Use list_dir.`;
       if (stat.size > 2_000_000) return `${tilde(file)} is too big to read (${Math.round(stat.size / 1e6)} MB).`;
-      const buf = fs.readFileSync(file);
-      if (buf.subarray(0, 4000).includes(0)) return `${tilde(file)} is not a text file.${/\.(png|jpe?g|gif|webp|heic)$/i.test(file) ? " Use look_at_image." : ""}`;
+      const buf = await fs.promises.readFile(file);
+      if (buf.subarray(0, 4000).includes(0)) return `${tilde(file)} is not a text file.`;
       return buf.toString("utf8");
     },
   },
@@ -202,10 +200,10 @@ export const TOOLS = [
     params: [p("path", "file path"), p("content", "full file content")],
     kind: "write",
     label: (a, project) => `Wrote ${tilde(expand(a.path, project))}`,
-    run(a, ctx) {
+    async run(a, ctx) {
       const file = at(a.path, ctx);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, String(a.content ?? ""));
+      await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      await fs.promises.writeFile(file, String(a.content ?? ""));
       return `Saved ${tilde(file)} (${Buffer.byteLength(String(a.content ?? ""))} bytes).`;
     },
   },
@@ -215,9 +213,9 @@ export const TOOLS = [
     params: [p("path", "folder path", { required: false })],
     kind: "read",
     label: (a, project) => `Listed ${tilde(expand(a.path, project))}`,
-    run(a, ctx) {
+    async run(a, ctx) {
       const dir = at(a.path, ctx);
-      const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => !e.name.startsWith("."));
+      const entries = (await fs.promises.readdir(dir, { withFileTypes: true })).filter((e) => !e.name.startsWith("."));
       const lines = entries.slice(0, 120).map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
       if (entries.length > 120) lines.push(`…and ${entries.length - 120} more`);
       return `${tilde(dir)} (${entries.length} items)\n${lines.join("\n") || "(empty)"}`;
@@ -311,62 +309,6 @@ export const TOOLS = [
     run: (a) => bridge("type", { target: String(a.target ?? ""), text: String(a.text ?? "") }),
   },
   {
-    name: "look_at_screen",
-    desc: "see the user's screen",
-    params: [p("question", "what to look for", { required: false })],
-    kind: "read",
-    available: omniRunning,
-    label: () => "Looked at your screen",
-    async run(a, ctx) {
-      const file = path.join(DIRS.uploads, `screen-${crypto.randomUUID()}.png`);
-      const tmp = file.replace(/\.png$/, ".jpg");
-      try {
-        await screenshot(file);
-        const picture = await pictureForModel(file, tmp);
-        return await look(picture.data, picture.mime, String(a.question || "Describe what is on this screen."), ctx);
-      } finally {
-        fs.rmSync(file, { force: true });
-        fs.rmSync(tmp, { force: true });
-      }
-    },
-  },
-  {
-    name: "look_at_image",
-    desc: "see a picture file",
-    params: [p("path", "image path"), p("question", "what to look for", { required: false })],
-    kind: "read",
-    available: omniRunning,
-    label: (a) => `Looked at ${path.basename(String(a.path ?? ""))}`,
-    async run(a, ctx) {
-      const file = at(a.path, ctx);
-      const tmp = path.join(DIRS.uploads, `look-${crypto.randomUUID()}.jpg`);
-      try {
-        const picture = await pictureForModel(file, tmp);
-        return await look(picture.data, picture.mime, String(a.question || "Describe this picture."), ctx);
-      } finally {
-        fs.rmSync(tmp, { force: true });
-      }
-    },
-  },
-  {
-    name: "transcribe_audio",
-    desc: "turn an audio file into text",
-    params: [p("path", "audio path")],
-    kind: "read",
-    limit: 3,
-    available: omniRunning,
-    label: (a) => `Listened to ${path.basename(String(a.path ?? ""))}`,
-    async run(a, ctx) {
-      const tmp = path.join(DIRS.uploads, `hear-${crypto.randomUUID()}.wav`);
-      try {
-        await toWav(at(a.path, ctx), tmp);
-        return await transcribe(fs.readFileSync(tmp), ctx);
-      } finally {
-        fs.rmSync(tmp, { force: true });
-      }
-    },
-  },
-  {
     name: "remember",
     desc: "save a lasting fact about the user",
     params: [p("fact", "short fact")],
@@ -421,20 +363,15 @@ export const toolMap = new Map(TOOLS.map((t) => [t.name, t]));
 /** Tools the model can use right now. */
 export const activeTools = () => TOOLS.filter((t) => !t.available || t.available());
 
-/** One compact line per tool, for the text prompt. */
-export const signature = (t) => `- ${t.name}(${t.params.map((x) => x.name).join(", ")}) ${t.desc}`;
-
-/** OpenAI-style function schema, for the realtime voice session. */
-export const schema = (t) => ({
-  type: "function",
-  name: t.name,
-  description: t.desc,
-  parameters: {
-    type: "object",
-    properties: Object.fromEntries(t.params.map((x) => [x.name, { type: x.type, description: x.desc }])),
-    required: t.params.filter((x) => x.required !== false).map((x) => x.name),
-  },
-});
+/** One tool in K2 Horizon's own format, the way its chat template lists tools. */
+export const signature = (t) =>
+  [
+    `## ${t.name}`,
+    t.desc,
+    ...(t.params.length
+      ? ["", "**Parameters**", ...t.params.map((x) => `- \`${x.name}\` *(${x.type}${x.required !== false ? ", required" : ""})* - ${x.desc}`)]
+      : []),
+  ].join("\n");
 
 /** Runs a tool and returns text for the model, cut to the output budget. */
 export async function runTool(name, args, ctx) {

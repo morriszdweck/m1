@@ -6,6 +6,7 @@ import { DEVICE, IS_MAC, MODELS, bus, load, saver, settings } from "./core.js";
 import { backends } from "./backends.js";
 import { classify, hardDeny } from "./guardian.js";
 import { complete, stream } from "./llm.js";
+import { splitThink } from "./think.js";
 import { memory } from "./memory.js";
 import { buildWire, systemPrompt } from "./prompt.js";
 import { parseToolCall, visibleText } from "./toolparser.js";
@@ -14,20 +15,17 @@ import { activeTools, runTool, toolMap } from "./tools.js";
 import { uploads } from "./uploads.js";
 
 const uid = () => crypto.randomUUID();
-const STOPS = ["<|tool_call_end|>", "</tool_call>"];
+// K2 Horizon runs one tool per step: stop as soon as its call closes.
+const STOPS = ["</ifm|tool_call>", "</ifm|tool_calls>", "</tool_call>"];
+/** How much K2 Horizon may write per step at each reasoning effort, thinking included. */
+const STEP_TOKENS = { low: 2048, medium: 4096, high: 8192 };
 const OPEN = ["pending", "checking", "approval", "running"];
 
 // Small models reach for tools on plain asks ("make a table", "explain X") and
 // every tool signature costs prompt tokens. Offer tools only when the request
 // mentions something a tool is for, or the last reply was already using them.
 const TOOL_WORDS =
-  /\b(files?|folders?|desktop|downloads|documents|disk|directory|open|launch|run|command|terminal|shell|install|apps?|mac|linux|computer|search|google|look ?up|web|websites?|site|online|internet|url|links?|browse|browser|click|type into|news|weather|forecast|price|stocks?|score|latest|current|today|tonight|tomorrow|yesterday|now|recent|remind|reminder|remember|forget|recall|clipboard|copy|paste|screen|screenshot|save|read|list|delete|move|rename|battery|wi-?fi|my)\b|[~/]\w|\.[a-z]{2,4}\b/i;
-
-/** Some templates leave the thinking in the text instead of reporting it separately. */
-function splitThink(text) {
-  const m = text.match(/^\s*<think>([\s\S]*?)(?:<\/think>\s*|$)/);
-  return m ? { thought: m[1], rest: text.slice(m[0].length) } : { thought: "", rest: text };
-}
+  /\b(files?|folders?|desktop|downloads|documents|disk|directory|open|launch|run|command|terminal|shell|install|apps?|mac|linux|computer|search|google|look ?up|web|websites?|site|online|internet|url|links?|browse|browser|click|type into|news|weather|forecast|price|stocks?|score|latest|current|today|tonight|tomorrow|yesterday|now|recent|remind|reminder|remember|forget|recall|clipboard|copy|paste|save|read|list|delete|move|rename|battery|wi-?fi|my)\b|[~/]\w|\.[a-z]{2,4}\b/i;
 
 const joinThoughts = (before, now) => [before, now.trim()].filter(Boolean).join("\n\n");
 
@@ -37,7 +35,7 @@ function wantsTools(chat, request) {
   return Boolean(prev?.steps?.length);
 }
 
-let chats = load("chats.json", []).filter((c) => c.source !== "voice" || c.messages.length);
+let chats = load("chats.json", []);
 for (const chat of chats) {
   for (const m of chat.messages) {
     if (m.status === "streaming") m.status = "stopped";
@@ -171,18 +169,10 @@ export const agent = {
     return true;
   },
 
-  /** Omni for anything it has to see or hear; the faster text model for everything else. */
-  route(chat) {
-    const recent = chat.messages.filter((m) => m.role === "user").slice(-2);
-    const media = recent.some((m) => m.attachments?.some((a) => a.kind === "image" || a.kind === "audio"));
-    const up = (id) => backends.running(id);
-    if (media) {
-      if (up("omni")) return { id: "omni" };
-      return { error: "Pictures and audio need the Eyes and ears part. Turn it on in Settings → Downloads." };
-    }
-    if (up("small")) return { id: "small" };
-    if (up("omni")) return { id: "omni" };
-    const waking = ["small", "omni"].some((id) => backends.states[id]?.status === "starting");
+  /** M1 has one brain. */
+  route() {
+    if (backends.running("small")) return { id: "small" };
+    const waking = backends.states.small?.status === "starting";
     return { error: waking ? "The model is still waking up. Try again in a few seconds." : "No model is running yet. Open Settings → Downloads to set one up." };
   },
 
@@ -215,8 +205,7 @@ export const agent = {
         const context = backends.contextTokens(route.id);
         const budget = Math.min(settings.contextBudget, Math.floor(context / 2));
         const wire = buildWire(chat.messages, {
-          system: systemPrompt({ tools, omni: route.id === "omni", query: request.content, project: chat.project }),
-          omni: route.id === "omni",
+          system: systemPrompt({ tools, query: request.content, project: chat.project }),
           budget,
         });
         // Out of steps: ask for an answer from what was found instead of another call.
@@ -231,10 +220,9 @@ export const agent = {
         let last = 0;
         const thinkStart = Date.now();
         let thinkEnd = 0;
-        let thought = "";
-        // The built-in brain always reasons first; a custom model only thinks when its template supports it.
-        const think = route.id === "small" && backends.supportsThinking("small");
-        const maxTokens = Math.max(256, Math.min(think ? 6144 : 1536, context - budget));
+        // The reasoning effort slider: K2 Horizon thinks long (high), shorter (medium) or briefly (low).
+        const effort = ["low", "medium", "high"].includes(settings.reasoningEffort) ? settings.reasoningEffort : "high";
+        const maxTokens = Math.max(256, Math.min(STEP_TOKENS[effort], context - budget));
         for await (const part of stream({
           url: model.url(),
           model: model.id,
@@ -242,21 +230,18 @@ export const agent = {
           temperature: model.temperature(),
           maxTokens,
           stop: STOPS,
-          think,
+          effort,
           signal,
         })) {
-          if (part.reasoning) thought += part.reasoning;
           if (part.content) {
             live += part.content;
-            if (!thinkEnd && !/^\s*<think>(?![\s\S]*<\/think>)/.test(live)) thinkEnd = Date.now();
-          }
-          if (part.reasoning || part.content) {
             const inline = splitThink(live);
+            if (!thinkEnd && inline.done) thinkEnd = Date.now();
             const visible = visibleText(inline.rest);
-            if (Date.now() - last > 50 && (visible !== shown || part.reasoning || inline.thought)) {
+            if (Date.now() - last > 50 && (visible !== shown || inline.thought)) {
               shown = visible;
               last = Date.now();
-              bus.emit("delta", { chatId: chat.id, messageId: reply.id, text: visible, thinking: joinThoughts(reply.thinking, thought + inline.thought) });
+              bus.emit("delta", { chatId: chat.id, messageId: reply.id, text: visible, thinking: joinThoughts(reply.thinking, inline.thought) });
             }
           }
           if (part.timings) {
@@ -266,8 +251,9 @@ export const agent = {
         }
 
         const inline = splitThink(live);
-        thought += inline.thought;
-        live = inline.rest;
+        const thought = inline.thought;
+        // Cut off while still thinking: there is no answer yet.
+        live = inline.done ? inline.rest : "";
         if (thought.trim()) {
           reply.thinking = joinThoughts(reply.thinking, thought);
           reply.thinkingMs = (reply.thinkingMs ?? 0) + ((thinkEnd || Date.now()) - thinkStart);
@@ -275,7 +261,8 @@ export const agent = {
         const { text, call } = parseToolCall(live, new Map(tools.map((t) => [t.name, t])));
         live = "";
         if (!call) {
-          reply.content = text || "I couldn't come up with a reply. Try asking another way.";
+          reply.content =
+            text || (inline.done ? "I couldn't come up with a reply. Try asking another way." : "I ran out of room while thinking. Try a lower reasoning effort, or ask a smaller question.");
           break;
         }
         if (final) {
@@ -336,7 +323,7 @@ export const agent = {
     }
   },
 
-  /** Decides who approves an action, following the approval mode. Shared with voice chat. */
+  /** Decides who approves an action, following the approval mode. */
   async decide(chat, message, step, request, signal) {
     const tool = toolMap.get(step.tool);
     const mode = settings.approvalMode;
@@ -404,8 +391,8 @@ export const agent = {
     const out = await complete({
       url: settings.smallURL,
       model: MODELS.small.id,
-      temperature: 0.2,
-      maxTokens: 16,
+      temperature: 0.6,
+      maxTokens: 400,
       messages: [
         { role: "system", content: "You name chats. Reply with a 2 to 5 word title in plain words, nothing else." },
         { role: "user", content: `Name a chat that starts with this message:\n"""${text.slice(0, 600)}"""` },

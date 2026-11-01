@@ -1,12 +1,15 @@
-// Streaming client for the local llama.cpp servers (OpenAI-compatible API).
+// Streaming client for the local llama.cpp server (OpenAI-compatible API).
+// The server runs with --reasoning-format none, so K2 Horizon's <ifm|think…>
+// block arrives inside the content and M1 splits it out itself (see think.js).
 
 import { isLocal } from "./core.js";
+import { splitThink } from "./think.js";
 
 /**
- * Streams a chat completion. Yields {reasoning} while the model thinks (only
- * with think on), {content}, then {usage} and {timings} when the server reports them.
+ * Streams a chat completion. Yields {content}, then {usage} and {timings} when the
+ * server reports them. effort is K2 Horizon's reasoning effort: low, medium or high.
  */
-export async function* stream({ url, model, messages, temperature = 0.3, maxTokens = 1024, stop, think = false, signal }) {
+export async function* stream({ url, model, messages, temperature = 1.0, topP = 0.95, maxTokens = 1024, stop, effort = "high", signal }) {
   if (!isLocal(url)) throw new Error("Refusing a model address that isn't on this computer.");
   let res;
   try {
@@ -18,12 +21,13 @@ export async function* stream({ url, model, messages, temperature = 0.3, maxToke
         model,
         messages,
         temperature,
+        top_p: topP,
         max_tokens: maxTokens,
         stop,
         stream: true,
         stream_options: { include_usage: true },
         cache_prompt: true,
-        chat_template_kwargs: { enable_thinking: think },
+        chat_template_kwargs: { reasoning_effort: effort },
       }),
     });
   } catch (e) {
@@ -66,9 +70,9 @@ export async function* stream({ url, model, messages, temperature = 0.3, maxToke
   }
 }
 
-/** Collects a whole completion as text. */
+/** Collects a whole completion as text, without the thinking. Small jobs think little. */
 export async function complete(options) {
   let text = "";
-  for await (const part of stream(options)) if (part.content) text += part.content;
-  return text.trim();
+  for await (const part of stream({ effort: "low", ...options })) if (part.content) text += part.content;
+  return splitThink(text).rest.trim();
 }

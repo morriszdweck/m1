@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import {
-  AudioLines,
   Brain,
   Download,
   History,
@@ -41,7 +40,6 @@ export function Sidebar() {
   }, [chats, query]);
 
   const nav = [
-    { page: "voice", label: "Voice chat", icon: <AudioLines size={17} />, hash: "#/voice" },
     { page: "foryou", label: "For You", icon: <Sparkles size={17} />, hash: "#/foryou" },
     { page: "routines", label: "Routines", icon: <Repeat size={17} />, hash: "#/routines" },
     { page: "memory", label: "Memory", icon: <Brain size={17} />, hash: "#/memory" },
@@ -49,9 +47,8 @@ export function Sidebar() {
   ];
 
   const small = part(parts, "small");
-  const omni = part(parts, "omni");
-  const up = [small, omni].filter((p) => p?.status === "running");
-  const starting = [small, omni].some((p) => p?.status === "starting" || p?.status === "installing");
+  const up = [small].filter((p) => p?.status === "running");
+  const starting = small?.status === "starting" || small?.status === "installing";
   const fetching = parts.find((p) => p.status === "installing");
   const status = fetching
     ? { tone: "busy" as const, text: `Downloading ${fetching.title.toLowerCase()}${fetching.fraction ? ` · ${Math.round(fetching.fraction * 100)}%` : "…"}` }
@@ -171,7 +168,6 @@ function ChatRow({
   return (
     <div className={cx("chat-row", active && "active")}>
       <button className="chat-row-main" onClick={() => go(`#/chat/${chat.id}`)} title={chat.title}>
-        {chat.source === "voice" && <AudioLines size={13} className="chat-row-icon" />}
         {chat.source === "routine" && <Repeat size={13} className="chat-row-icon" />}
         <span className="chat-row-title">{chat.title}</span>
         {running && <Spinner size={12} />}

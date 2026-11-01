@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  AudioLines,
   Bell,
   BookOpen,
   Brain,
@@ -15,9 +14,7 @@ import {
   FileText,
   FolderOpen,
   Globe,
-  Image,
   Keyboard,
-  Monitor,
   MousePointerClick,
   Pencil,
   Search,
@@ -43,9 +40,6 @@ const ICONS: Record<string, typeof Terminal> = {
   browser_read: BookOpen,
   browser_click: MousePointerClick,
   browser_type: Keyboard,
-  look_at_screen: Monitor,
-  look_at_image: Image,
-  transcribe_audio: AudioLines,
   remember: Brain,
   recall: Brain,
   clipboard: Clipboard,

@@ -1,15 +1,13 @@
 // What differs between macOS and Linux: opening things, the clipboard,
-// screenshots, notifications, converting pictures, audio and documents, which
+// notifications, reading documents as text, which
 // program holds a port, and which GPU the AI engine can use. On a Mac these
 // use the tools macOS ships with. On Linux they use the common desktop tools
 // when they're installed, and say which package to add when they aren't.
 
 import { spawn } from "node:child_process";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { IS_MAC, run } from "./core.js";
 
 const HOME = os.homedir();
@@ -185,126 +183,7 @@ export async function writeClipboard(text) {
   return pipeInto(...tool.write, text);
 }
 
-// ---- Screenshots ----
-
-/** Saves a PNG of the whole screen to `file`. */
-export async function screenshot(file) {
-  if (IS_MAC) return run("screencapture", ["-x", "-C", "-t", "png", file]);
-  noDesktop();
-  const de = desktopName();
-  const tries = [];
-  if (wayland()) {
-    if (has("grim")) tries.push(["grim", [file]]); // sway, Hyprland and other wlroots desktops
-    if (de.includes("kde") && has("spectacle")) tries.push(["spectacle", ["-b", "-n", "-f", "-o", file]]);
-    if (de.includes("gnome") && has("gnome-screenshot")) tries.push(["gnome-screenshot", ["-f", file]]);
-  } else {
-    if (has("import")) tries.push(["import", ["-window", "root", file]]);
-    if (has("scrot")) tries.push(["scrot", [file]]);
-    if (has("maim")) tries.push(["maim", [file]]);
-    if (has("gnome-screenshot")) tries.push(["gnome-screenshot", ["-f", file]]);
-    if (has("spectacle")) tries.push(["spectacle", ["-b", "-n", "-f", "-o", file]]);
-  }
-  for (const [cmd, args] of tries) {
-    try {
-      await run(cmd, args, { timeout: 30_000 });
-      if (fs.statSync(file).size > 0) return;
-    } catch {}
-  }
-  // The desktop portal works on GNOME and KDE under Wayland. The desktop may ask the user first.
-  if (has("gdbus")) return portalScreenshot(file);
-  throw missing("Seeing the screen", wayland() ? "grim (or gnome-screenshot, or spectacle)" : "imagemagick (or scrot)");
-}
-
-function portalScreenshot(file) {
-  const token = `m1x${crypto.randomBytes(5).toString("hex")}`;
-  // The answer comes back as a D-Bus signal, so listen before asking.
-  const monitor = spawn("gdbus", ["monitor", "--session", "--dest", "org.freedesktop.portal.Desktop"], { stdio: ["ignore", "pipe", "ignore"] });
-  const done = new Promise((resolve, reject) => {
-    let out = "";
-    let asked = false;
-    const timer = setTimeout(() => reject(new Error("The screenshot wasn't allowed in time.")), 60_000);
-    const ask = () => {
-      if (asked) return;
-      asked = true;
-      run("gdbus", [
-        "call", "--session", "--dest", "org.freedesktop.portal.Desktop", "--object-path", "/org/freedesktop/portal/desktop",
-        "--method", "org.freedesktop.portal.Screenshot.Screenshot", "", `{'handle_token': <'${token}'>, 'interactive': <false>}`,
-      ]).catch((e) => {
-        clearTimeout(timer);
-        reject(new Error(`This desktop can't take screenshots for apps (${e.message.slice(0, 120)}).`));
-      });
-    };
-    setTimeout(ask, 1000);
-    monitor.on("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    monitor.stdout.on("data", (d) => {
-      out += d;
-      if (/Monitoring/.test(out)) ask();
-      const m = out.match(new RegExp(`/${token}: org\\.freedesktop\\.portal\\.Request\\.Response \\(uint32 (\\d+), (.*)\\)`));
-      if (!m) return;
-      clearTimeout(timer);
-      const uri = m[2].match(/'uri': <'([^']+)'>/)?.[1];
-      if (m[1] === "0" && uri) resolve(uri);
-      else reject(new Error("The screenshot was cancelled or not allowed."));
-    });
-  });
-  return done
-    .then((uri) => {
-      // The portal saves into the Pictures folder; move it out of the way.
-      const saved = fileURLToPath(uri);
-      fs.copyFileSync(saved, file);
-      fs.rmSync(saved, { force: true });
-    })
-    .finally(() => monitor.kill());
-}
-
-// ---- Pictures, audio and documents ----
-
-const RAW_PICTURE = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", bmp: "image/bmp" };
-
-/** Converts a picture to the format `dest` names (.png or .jpg), at most `max` pixels on its long side. */
-export async function convertImage(src, dest, max = 1280) {
-  if (IS_MAC) return run("sips", ["-s", "format", dest.endsWith(".png") ? "png" : "jpeg", "-Z", String(max), src, "--out", dest]);
-  const tries = [];
-  for (const im of ["magick", "convert"]) if (has(im)) tries.push([im, [`${src}[0]`, "-auto-orient", "-resize", `${max}x${max}>`, dest]]);
-  if (has("ffmpeg")) {
-    const fit = `scale='min(${max},iw)':'min(${max},ih)':force_original_aspect_ratio=decrease`;
-    tries.push(["ffmpeg", ["-nostdin", "-loglevel", "error", "-y", "-i", src, "-frames:v", "1", "-vf", fit, dest]]);
-  }
-  if (/\.heic$/i.test(src) && has("heif-convert")) tries.push(["heif-convert", [src, dest]]);
-  let last;
-  for (const [cmd, args] of tries) {
-    try {
-      return await run(cmd, args, { timeout: 60_000 });
-    } catch (e) {
-      last = e;
-    }
-  }
-  throw last ?? missing("Opening this kind of picture", "imagemagick (or ffmpeg)");
-}
-
-/** A picture ready for Omni: a JPEG up to 1280 px, or the original when Linux has no converter and llama.cpp can read it as is. */
-export async function pictureForModel(file, tmp) {
-  try {
-    await convertImage(file, tmp);
-    return { data: fs.readFileSync(tmp), mime: "image/jpeg" };
-  } catch (e) {
-    const mime = RAW_PICTURE[path.extname(file).slice(1).toLowerCase()];
-    if (IS_MAC || !mime) throw e;
-    return { data: fs.readFileSync(file), mime };
-  }
-}
-
-/** Converts audio to a 16 kHz mono WAV, the format Omni hears best. */
-export async function toWav(src, dest) {
-  if (IS_MAC) return run("afconvert", ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", src, dest]);
-  if (has("ffmpeg")) return run("ffmpeg", ["-nostdin", "-loglevel", "error", "-y", "-i", src, "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", dest], { timeout: 300_000 });
-  // Omni takes WAV at any rate; it just hears 16 kHz mono best.
-  if (/\.wav$/i.test(src)) return fs.copyFileSync(src, dest);
-  throw missing("Listening to this audio", "ffmpeg");
-}
+// ---- Documents ----
 
 /** Plain text from a Word, RTF or OpenDocument file. */
 export function documentText(file) {

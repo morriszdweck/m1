@@ -54,45 +54,6 @@ export function groupChats(chats: Chat[]) {
   return groups.filter(([, list]) => list.length);
 }
 
-/** Shrinks big pictures before upload: the model sees at most about 1280 px anyway. */
-export async function prepareImage(file: File): Promise<{ blob: Blob; name: string }> {
-  const max = 1280;
-  if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) return { blob: file, name: file.name };
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && file.size < 1_500_000) return { blob: file, name: file.name };
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob>((r) => canvas.toBlob((b) => r(b!), "image/jpeg", 0.9));
-    return { blob, name: file.name.replace(/\.\w+$/, "") + ".jpg" };
-  } catch {
-    return { blob: file, name: file.name };
-  }
-}
-
-/** Asks the browser to share a screen or window, grabs one frame and stops sharing. */
-export async function captureScreen(): Promise<Blob> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-  try {
-    const video = document.createElement("video");
-    video.srcObject = stream;
-    video.muted = true;
-    await video.play();
-    await new Promise((r) => setTimeout(r, 250));
-    const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
-    canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return await new Promise<Blob>((r) => canvas.toBlob((b) => r(b!), "image/jpeg", 0.9));
-  } finally {
-    stream.getTracks().forEach((t) => t.stop());
-  }
-}
-
 export function chatMarkdown(chat: Chat) {
   const lines = [`# ${chat.title}`, ""];
   for (const m of chat.messages) {

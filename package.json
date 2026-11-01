@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "A private AI agent for macOS and Linux that runs LFM3 1.7B and LFM3 Omni 2B locally, with a web UI.",
+  "description": "A private AI agent for macOS and Linux that runs K2 Horizon 3.7B locally, with a web UI.",
   "license": "MIT",
   "engines": {
     "node": ">=22"

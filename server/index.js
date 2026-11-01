@@ -1,5 +1,5 @@
 // M1's local web server. Serves the web UI and its API on
-// 127.0.0.1 only, and runs the agent, the models and the voice bridge.
+// 127.0.0.1 only, and runs the agent and the models.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -14,9 +14,7 @@ import { memory } from "./memory.js";
 import { routineStore } from "./routines.js";
 import { cancelReminder, reminderList } from "./tools.js";
 import { forget as forgetProject, listFolders, pickFolder, projectFolder, recentProjects, sandboxKind } from "./project.js";
-import { MAX_UPLOAD, uploads } from "./uploads.js";
-import { speak, transcribe } from "./omni.js";
-import { handleVoice } from "./voice.js";
+import { MAX_UPLOAD, NotText, uploads } from "./uploads.js";
 import { BUILD, updater } from "./updater.js";
 
 const PORT = Number(process.env.M1_PORT ?? 8270);
@@ -172,32 +170,17 @@ route("POST", "/api/uploads", async (req) => {
   const data = await body(req, MAX_UPLOAD);
   try {
     return await uploads.add(name, String(req.headers["content-type"] ?? ""), data);
-  } catch {
-    throw new HttpError(415, "I couldn't read that file.");
+  } catch (e) {
+    throw new HttpError(415, e instanceof NotText ? e.message : "I couldn't read that file.");
   }
-});
-
-route("POST", "/api/transcribe", async (req) => {
-  const wav = await body(req, MAX_UPLOAD);
-  if (!backends.running("omni")) throw new HttpError(503, "Dictation needs Eyes and ears. Set it up in Settings → Downloads.");
-  return { text: await transcribe(wav) };
-});
-
-route("POST", "/api/speak", async (req, _, res) => {
-  const { text, voice } = await json(req);
-  if (!backends.running("omni")) throw new HttpError(503, "Reading aloud needs Eyes and ears. Set it up in Settings → Downloads.");
-  const audio = await speak(String(text ?? "").slice(0, 1200), voice === "male" ? "male" : voice === "female" ? "female" : settings.voice);
-  res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": audio.length, "Cache-Control": "no-store" });
-  res.end(audio);
-  return undefined;
 });
 
 route("GET", "/api/settings", () => settings);
 // Approve for Me needs Auto 150M. Choosing it early fetches Auto 150M and turns the mode on once it's ready.
 route("PATCH", "/api/settings", async (req) => {
   const patch = (await json(req)) ?? {};
-  const before = { small: settings.smallQuant, omni: settings.omniQuant };
-  const resizing = ["small", "omni"].some((id) => `${id}Quant` in patch && patch[`${id}Quant`] !== before[id]);
+  const before = settings.smallQuant;
+  const resizing = "smallQuant" in patch && patch.smallQuant !== before;
   if (resizing && backends.busy) throw new HttpError(409, "Wait for the current download to finish, then pick a size.");
   if (patch.approvalMode === "approveForMe" && !backends.running("guardian")) {
     delete patch.approvalMode;
@@ -207,7 +190,7 @@ route("PATCH", "/api/settings", async (req) => {
     backends.wantGuardian(false);
   }
   const next = updateSettings(patch);
-  for (const id of ["small", "omni"]) if (settings[`${id}Quant`] !== before[id]) backends.switchQuant(id);
+  if (settings.smallQuant !== before) backends.switchQuant("small");
   return next;
 });
 backends.readyHooks.push((id) => {
@@ -366,12 +349,11 @@ const server = http.createServer(async (req, res) => {
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 });
 server.on("upgrade", (req, socket, head) => {
   const url = urlOf(req);
-  if (!url || !["/ws", "/voice"].includes(url.pathname) || !req.headers.origin || !trusted(req, url, { needToken: true })) {
+  if (!url || url.pathname !== "/ws" || !req.headers.origin || !trusted(req, url, { needToken: true })) {
     socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
     return socket.destroy();
   }
   sockets.handleUpgrade(req, socket, head, (ws) => {
-    if (url.pathname === "/voice") return handleVoice(ws);
     bus.add(ws);
     ws.send(JSON.stringify({ type: "hello", ...snapshot() }));
   });

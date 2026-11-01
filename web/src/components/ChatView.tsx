@@ -1,30 +1,24 @@
 // A conversation: your messages on the right, M1's answers as full
 // Markdown with the steps it took, and the message box at the bottom.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowDown,
-  AudioLines,
   Check,
   ChevronRight,
   Copy,
   Download,
   FileText,
   Lightbulb,
-  Monitor,
-  Music,
   Pencil,
   Pin,
   PinOff,
   RefreshCw,
   Repeat,
   Sparkles,
-  Square,
   Trash2,
-  Volume2,
 } from "lucide-react";
 import { api, fileURL } from "../api";
-import { speak, stopSpeaking } from "../audio/speak";
 import { errorToast, go, modelsReady, useStore } from "../store";
 import type { Attachment, Chat, Message } from "../types";
 import { chatMarkdown, cx, download, duration, greeting } from "../util";
@@ -81,12 +75,6 @@ function Welcome({ chat }: { chat?: Chat }) {
           <p className="welcome-sub">{ready ? "What can I help with?" : "Your models are starting up. You can type now."}</p>
           <Composer chat={chat} autoFocus />
           <div className="chips">
-            <button className="chip" onClick={() => go("#/voice")}>
-              <AudioLines size={15} /> Talk to me
-            </button>
-            <button className="chip" onClick={() => start("Look at my screen and tell me what you see.")}>
-              <Monitor size={15} /> Look at my screen
-            </button>
             {routines.slice(0, 2).map((r) => (
               <button key={r.id} className="chip" onClick={() => api<{ id: string }>("POST", `/api/routines/${r.id}/run`).then((c) => go(`#/chat/${c.id}`), errorToast)}>
                 <Repeat size={15} /> {r.name}
@@ -115,12 +103,11 @@ function Welcome({ chat }: { chat?: Chat }) {
 // ---- Conversation ----
 
 function Conversation({ chat }: { chat: Chat }) {
-  const { running, settings } = useStore();
+  const running = useStore((s) => s.running);
   const busy = running.includes(chat.id);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const [showJump, setShowJump] = useState(false);
-  const [zoom, setZoom] = useState<string | null>(null);
   const live = useStore((s) => s.live);
   const lastId = chat.messages[chat.messages.length - 1]?.id;
 
@@ -135,16 +122,6 @@ function Conversation({ chat }: { chat: Chat }) {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [chat.id, lastId]);
-
-  // Read finished answers aloud when that's turned on.
-  const seen = useRef(new Map<string, string | undefined>());
-  useEffect(() => {
-    for (const m of chat.messages) {
-      const before = seen.current.get(m.id);
-      if (before === "streaming" && m.status === "done" && settings?.speakReplies && !m.voice && m.content) speak(m.id, m.content);
-      seen.current.set(m.id, m.status);
-    }
-  }, [chat, settings?.speakReplies]);
 
   const onScroll = () => {
     const el = scroller.current!;
@@ -171,7 +148,6 @@ function Conversation({ chat }: { chat: Chat }) {
             onClick: () => api("PATCH", `/api/chats/${chat.id}`, { pinned: !chat.pinned }).catch(errorToast),
           },
           { label: "Export as Markdown", icon: <Download size={15} />, onClick: () => download(`${chat.title}.md`, chatMarkdown(chat)) },
-          { label: "Continue by voice", icon: <AudioLines size={15} />, onClick: () => go(`#/voice/${chat.id}`) },
           "divider",
           { label: "Delete", icon: <Trash2 size={15} />, danger: true, onClick: remove },
         ]}
@@ -180,7 +156,7 @@ function Conversation({ chat }: { chat: Chat }) {
         <div className="thread-inner">
           {chat.messages.map((m, i) =>
             m.role === "user" ? (
-              <UserMessage key={m.id} chat={chat} message={m} busy={busy} onZoom={setZoom} />
+              <UserMessage key={m.id} chat={chat} message={m} busy={busy} />
             ) : (
               <AssistantMessage key={m.id} chat={chat} message={m} last={i === chat.messages.length - 1} busy={busy} />
             ),
@@ -203,31 +179,11 @@ function Conversation({ chat }: { chat: Chat }) {
         <ApprovalDock chatId={chat.id} />
         <Composer chat={chat} autoFocus />
       </div>
-      {zoom && (
-        <div className="lightbox" onClick={() => setZoom(null)}>
-          <img src={zoom} alt="" />
-        </div>
-      )}
     </div>
   );
 }
 
-function AttachmentView({ file, onZoom }: { file: Attachment; onZoom: (url: string) => void }) {
-  if (file.kind === "image") {
-    return (
-      <button className="msg-image" onClick={() => onZoom(fileURL(file.id))}>
-        <img src={fileURL(file.id)} alt={file.name} loading="lazy" />
-      </button>
-    );
-  }
-  if (file.kind === "audio") {
-    return (
-      <div className="msg-file audio">
-        <Music size={15} />
-        <audio controls src={fileURL(file.id)} preload="none" />
-      </div>
-    );
-  }
+function AttachmentView({ file }: { file: Attachment }) {
   return (
     <a className="msg-file" href={fileURL(file.id)} target="_blank" rel="noreferrer">
       <FileText size={15} />
@@ -236,7 +192,7 @@ function AttachmentView({ file, onZoom }: { file: Attachment; onZoom: (url: stri
   );
 }
 
-function UserMessage({ chat, message, busy, onZoom }: { chat: Chat; message: Message; busy: boolean; onZoom: (url: string) => void }) {
+function UserMessage({ chat, message, busy }: { chat: Chat; message: Message; busy: boolean }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(message.content);
   const [copied, setCopied] = useState(false);
@@ -251,7 +207,7 @@ function UserMessage({ chat, message, busy, onZoom }: { chat: Chat; message: Mes
       {!!message.attachments?.length && (
         <div className="msg-attachments">
           {message.attachments.map((a) => (
-            <AttachmentView key={a.id} file={a} onZoom={onZoom} />
+            <AttachmentView key={a.id} file={a} />
           ))}
         </div>
       )}
@@ -281,7 +237,6 @@ function UserMessage({ chat, message, busy, onZoom }: { chat: Chat; message: Mes
       ) : (
         message.content && (
           <div className="bubble">
-            {message.voice && <AudioLines size={13} className="bubble-voice" />}
             {message.content}
           </div>
         )
@@ -315,7 +270,7 @@ function UserMessage({ chat, message, busy, onZoom }: { chat: Chat; message: Mes
   );
 }
 
-/** What LFM3 1.7B shows while it reasons before answering. */
+/** What M1 shows while it reasons before answering. */
 const THINKING = "Thinking for a better answer…";
 
 /** The reasoning behind an answer: one closed line, which opens when you tap it. */
@@ -344,7 +299,6 @@ function Thoughts({ text, ms, active }: { text: string; ms?: number; active: boo
 function AssistantMessage({ chat, message, last, busy }: { chat: Chat; message: Message; last: boolean; busy: boolean }) {
   const liveText = useStore((s) => s.live[message.id]);
   const liveThought = useStore((s) => s.thoughts[message.id]);
-  const speaking = useStore((s) => s.speaking === message.id);
   const [copied, setCopied] = useState(false);
   const streaming = message.status === "streaming";
   const text = streaming ? (liveText ?? message.content) : message.content;
@@ -357,17 +311,12 @@ function AssistantMessage({ chat, message, last, busy }: { chat: Chat; message: 
 
   return (
     <div className={cx("msg assistant", streaming && "streaming")}>
-      {message.voice && (
-        <div className="voice-tag">
-          <AudioLines size={12} /> Voice
-        </div>
-      )}
       {thought && <Thoughts text={thought} ms={message.thinkingMs} active={thinkingNow} />}
       <Steps steps={steps} working={streaming} ms={message.stats?.ms} />
       {thinking && !thinkingNow && (
         <div className="thinking">
           <span className="thinking-dot" />
-          <span className="shimmer">{steps.length ? "Reading the results" : message.model === "small" ? THINKING : "Thinking"}</span>
+          <span className="shimmer">{steps.length ? "Reading the results" : THINKING}</span>
         </div>
       )}
       {text && <Markdown streaming={streaming}>{text}</Markdown>}
@@ -386,21 +335,16 @@ function AssistantMessage({ chat, message, last, busy }: { chat: Chat; message: 
       {!streaming && (
         <div className={cx("msg-actions", last && "always")}>
           {message.content && (
-            <>
-              <IconButton
-                label={copied ? "Copied" : "Copy"}
-                onClick={() => {
-                  navigator.clipboard.writeText(message.content);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
-              >
-                {copied ? <Check size={15} /> : <Copy size={15} />}
-              </IconButton>
-              <IconButton label={speaking ? "Stop reading" : "Read aloud"} active={speaking} onClick={() => (speaking ? stopSpeaking() : speak(message.id, message.content))}>
-                {speaking ? <Square size={13} fill="currentColor" /> : <Volume2 size={15} />}
-              </IconButton>
-            </>
+            <IconButton
+              label={copied ? "Copied" : "Copy"}
+              onClick={() => {
+                navigator.clipboard.writeText(message.content);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? <Check size={15} /> : <Copy size={15} />}
+            </IconButton>
           )}
           {last && !busy && (
             <IconButton label="Try again" onClick={() => api("POST", `/api/chats/${chat.id}/regenerate`).catch(errorToast)}>

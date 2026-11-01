@@ -17,16 +17,10 @@ export const PARTS = {
     bytes: 0.03e9,
   },
   small: {
-    title: "Everyday brain",
-    detail: "LFM3 1.7B. Fast chat, writing and actions.",
-    size: "1.1 GB",
+    title: "Brain",
+    detail: "K2 Horizon 3.7B. Thinks step by step, writes and takes actions.",
+    size: "3.6 GB",
     port: 8280,
-  },
-  omni: {
-    title: "Eyes and ears",
-    detail: "LFM3 Omni 2B. Voice chat, pictures, your screen and audio.",
-    size: "1.6 GB",
-    port: 8181,
   },
   guardian: {
     title: "Safety helper",
@@ -43,15 +37,13 @@ export const PARTS = {
     port: 8777,
   },
 };
-export const ORDER = ["engine", "small", "omni", "guardian", "browser"];
+export const ORDER = ["engine", "small", "guardian", "browser"];
 
 // Each model comes in several sizes (quants); settings pick which one is used.
 const GGUF = {
-  small: { repo: "LiquidAI/LFM3-1.7B-GGUF", prefix: "LFM3-1.7B-" },
-  omni: { repo: "LiquidAI/LFM3-Omni-2B-GGUF", prefix: "LFM3-Omni-2B-" },
+  small: { repo: "IFM/K2-Horizon-3.7B-GGUF", prefix: "K2-Horizon-4B-" },
 };
-const OMNI_PROJECTOR = { file: "mmproj-LFM3-Omni-2B-Q8_0.gguf", bytes: 0.54e9 };
-const quantOf = (id) => QUANTS[id].find((q) => q.id === settings[`${id}Quant`]) ?? QUANTS[id][1];
+const quantOf = (id) => QUANTS[id].find((q) => q.id === settings[`${id}Quant`]) ?? QUANTS[id].find((q) => q.note) ?? QUANTS[id][0];
 const weightsFile = (id) => `${GGUF[id].prefix}${quantOf(id).id}.gguf`;
 const CUSTOM_FILE = "custom-model.json";
 const CUSTOM_DIR = path.join(DIRS.models, "custom");
@@ -305,7 +297,7 @@ class Backends {
         };
       }
       if (!GGUF[id]) return part;
-      const extra = id === "omni" ? OMNI_PROJECTOR.bytes : 0;
+      const extra = 0;
       const quant = quantOf(id);
       return {
         ...part,
@@ -340,8 +332,6 @@ class Backends {
       case "small":
         if (this.custom) return variantOnDisk(variantOf(this.custom));
         return fs.existsSync(weights("small"));
-      case "omni":
-        return fs.existsSync(weights("omni")) && fs.existsSync(model(OMNI_PROJECTOR.file));
       case "guardian":
         return guardianOnDisk();
       case "browser":
@@ -366,7 +356,7 @@ class Backends {
   }
 
   get ready() {
-    return this.installed("engine") && (this.installed("small") || this.installed("omni"));
+    return this.installed("engine") && this.installed("small");
   }
 
   refresh() {
@@ -450,7 +440,7 @@ class Backends {
     return this.snapshot().find((p) => p.id === "small");
   }
 
-  /** Goes back to the built-in LFM3 1.7B and deletes the custom download. */
+  /** Goes back to the built-in K2 Horizon 3.7B and deletes the custom download. */
   clearCustomModel() {
     if (this.busy) throw modelError("Wait for the current download to finish, then switch back.", 409);
     if (!this.custom) return this.snapshot().find((p) => p.id === "small");
@@ -486,7 +476,7 @@ class Backends {
       return;
     }
     const queue = ORDER.filter((id) => ids.includes(id));
-    if ((queue.includes("small") || queue.includes("omni")) && !this.installed("engine") && !queue.includes("engine")) {
+    if (queue.includes("small") && !this.installed("engine") && !queue.includes("engine")) {
       queue.unshift("engine");
     }
     this.busy = true;
@@ -560,17 +550,6 @@ class Backends {
         return download(hf(GGUF.small.repo, weightsFile("small")), weights("small"), {
           signal,
           onProgress: this.progress(id, "Downloading"),
-        });
-      case "omni":
-        if (!fs.existsSync(model(OMNI_PROJECTOR.file))) {
-          await download(hf(GGUF.omni.repo, OMNI_PROJECTOR.file), model(OMNI_PROJECTOR.file), {
-            signal,
-            onProgress: this.progress(id, "Downloading the eyes and ears"),
-          });
-        }
-        return download(hf(GGUF.omni.repo, weightsFile("omni")), weights("omni"), {
-          signal,
-          onProgress: this.progress(id, "Downloading the brain"),
         });
       case "guardian":
         return this.installGuardian(signal);
@@ -764,10 +743,6 @@ class Backends {
           this.pruneQuants(id, { all: true });
         }
         break;
-      case "omni":
-        this.pruneQuants(id, { all: true });
-        fs.rmSync(model(OMNI_PROJECTOR.file), { force: true });
-        break;
       case "guardian":
         fs.rmSync(DIRS.guardian, { recursive: true, force: true });
         fs.mkdirSync(DIRS.guardian, { recursive: true });
@@ -818,23 +793,19 @@ class Backends {
   command(id) {
     const port = String(PARTS[id].port);
     switch (id) {
-      case "small":
-      case "omni": {
+      case "small": {
         const server = findEngine();
         if (!server) return null;
-        const custom = id === "small" ? this.custom : null;
+        const custom = this.custom;
         const variant = variantOf(custom);
         if (custom && !variant) return null;
         const context = this.contextTokens(id);
-        // Omni keeps two slots for a voice call and dictation at the same time. A custom
-        // text model gets one, so its whole context is available to a chat.
-        const slots = custom ? 1 : 2;
-        // Each request turns thinking on or off itself.
-        const args = ["--host", "127.0.0.1", "--port", port, "-c", String(context), "-np", String(slots), "-ngl", "99", "--reasoning", "auto"];
+        // One slot, so a chat gets the whole context. K2 Horizon's thinking comes back
+        // raw (--reasoning-format none): M1 reads its <ifm|think…> tags itself.
+        const args = ["--host", "127.0.0.1", "--port", port, "-c", String(context), "-np", "1", "-ngl", "99", "--reasoning-format", "none"];
         if (custom?.meta?.hasTemplate !== false) args.push("--jinja");
         if (this.cpuOnly) args.push("--device", "none");
-        if (id === "small") args.push("-m", custom ? customPath(variant.file) : weights("small"), "--alias", "LFM3-1.7B");
-        else args.push("-m", weights("omni"), "--mmproj", model(OMNI_PROJECTOR.file), "--alias", "LFM3-Omni-2B");
+        args.push("-m", custom ? customPath(variant.file) : weights("small"), "--alias", "K2-Horizon-3.7B");
         return { cmd: server, args };
       }
       case "guardian":
@@ -860,14 +831,9 @@ class Backends {
     if (await this.launch(id)) return;
     // A GPU build that can't use the GPU (an old driver, a missing library) still runs on the CPU.
     const gpu = ["vulkan", "cuda"].includes(this.engineFlavor());
-    if ((id === "small" || id === "omni") && gpu && !this.cpuOnly && this.states[id]?.status === "failed" && !/port \d+/.test(this.states[id].error)) {
+    if (id === "small" && gpu && !this.cpuOnly && this.states[id]?.status === "failed" && !/port \d+/.test(this.states[id].error)) {
       this.cpuOnly = true;
       this.set(id, { status: "starting", text: "The graphics card didn't work, so trying the processor…" });
-      for (const other of ["small", "omni"]) {
-        if (other === id || !this.procs[other]) continue;
-        this.stop(other);
-        this.start(other);
-      }
       await this.launch(id);
     }
   }
@@ -950,7 +916,7 @@ class Backends {
   }
 
   url(id) {
-    return id === "small" ? settings.smallURL : id === "omni" ? settings.omniURL : null;
+    return id === "small" ? settings.smallURL : null;
   }
 }
 

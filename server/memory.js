@@ -81,8 +81,8 @@ export const memory = {
     const out = await complete({
       url: settings.smallURL,
       model: MODELS.small.id,
-      temperature: 0,
-      maxTokens: 80,
+      temperature: 0.6,
+      maxTokens: 700,
       messages: [
         {
           role: "system",
@@ -115,13 +115,13 @@ export const memory = {
     const out = await complete({
       url: settings.smallURL,
       model: MODELS.small.id,
-      temperature: 0.8,
-      maxTokens: 220,
+      temperature: 1.0,
+      maxTokens: 1000,
       messages: [
         {
           role: "system",
           content:
-            `You suggest things a personal AI agent on a ${IS_MAC ? "Mac" : "Linux computer"} could do for this user right now. It can chat, search the web, use files and apps, set reminders, browse websites and see the screen. Write exactly 4 lines, each 'Short title | the full request the user would type', like 'Tidy Downloads | Sort the files in my Downloads folder into folders by type'. No numbering, nothing else.`,
+            `You suggest things a personal AI agent on a ${IS_MAC ? "Mac" : "Linux computer"} could do for this user right now. It can chat, search the web, use files and apps, set reminders, and browse websites. Write exactly 4 lines, each 'Short title | the full request the user would type', like 'Tidy Downloads | Sort the files in my Downloads folder into folders by type'. No numbering, nothing else.`,
         },
         { role: "user", content: `What I know about the user: ${known}` },
       ],

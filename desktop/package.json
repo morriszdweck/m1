@@ -28,8 +28,6 @@
       "hardenedRuntime": false,
       "darkModeSupport": true,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "M1 listens when you talk to it in voice chat or dictate a message.",
-        "NSCameraUsageDescription": "M1 looks through the camera only when you turn it on in voice chat.",
         "NSAppleEventsUsageDescription": "M1 can control other apps when you ask it to."
       }
     },

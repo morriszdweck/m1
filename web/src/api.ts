@@ -42,16 +42,6 @@ export async function upload(file: Blob, name: string) {
   return res.json();
 }
 
-export async function transcribe(wav: Blob): Promise<string> {
-  const res = await request("POST", "/api/transcribe", undefined, { body: wav, headers: { "Content-Type": "audio/wav" } });
-  return (await res.json()).text ?? "";
-}
-
-export async function speakAudio(text: string, voice?: string, signal?: AbortSignal): Promise<Blob> {
-  const res = await request("POST", "/api/speak", { text, voice }, { signal });
-  return res.blob();
-}
-
 export const fileURL = (id: string) => `/api/uploads/${id}?t=${token}`;
 
 export const socketURL = (path: string) => `ws://${location.host}${path}?t=${token}`;

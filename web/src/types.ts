@@ -1,4 +1,4 @@
-export type Attachment = { id: string; name: string; mime: string; kind: "image" | "audio" | "text" | "other"; size: number };
+export type Attachment = { id: string; name: string; mime: string; kind: "text" | "other"; size: number };
 
 export type StepStatus = "pending" | "checking" | "approval" | "running" | "done" | "error" | "denied";
 
@@ -26,8 +26,7 @@ export type Message = {
   steps?: Step[];
   status?: "streaming" | "done" | "stopped" | "error";
   error?: string;
-  model?: "small" | "omni";
-  voice?: boolean;
+  model?: "small";
   interrupted?: boolean;
   stats?: { ms: number; tokens: number; tps: number };
   thinking?: string;
@@ -41,7 +40,7 @@ export type Chat = {
   updatedAt: number;
   pinned: boolean;
   named?: boolean;
-  source?: "voice" | "routine";
+  source?: "routine";
   /** The folder the agent is limited to in this chat. */
   project?: string;
   messages: Message[];
@@ -49,7 +48,7 @@ export type Chat = {
 
 export type PartStatus = "missing" | "installing" | "installed" | "starting" | "running" | "failed";
 export type Part = {
-  id: "engine" | "small" | "omni" | "guardian" | "browser";
+  id: "engine" | "small" | "guardian" | "browser";
   title: string;
   detail: string;
   size: string;
@@ -65,7 +64,7 @@ export type Part = {
   live?: boolean;
   quant?: string;
   quants?: Quant[];
-  /** Set on the Everyday brain when it was added from Hugging Face. */
+  /** Set on the brain when it was added from Hugging Face. */
   custom?: CustomModel;
 };
 
@@ -100,13 +99,14 @@ export type ModelResolution = {
 
 export type ApprovalMode = "askAlways" | "approveForMe" | "fullAuto";
 
+/** How long K2 Horizon thinks before it answers. */
+export type ReasoningEffort = "low" | "medium" | "high";
+
 export type Settings = {
   userName: string;
   personality: "friendly" | "concise" | "playful" | "professional";
   approvalMode: ApprovalMode;
   theme: "system" | "light" | "dark";
-  voice: "female" | "male";
-  speakReplies: boolean;
   autoUpdate: boolean;
   workspace: string;
   guardianThreshold: number;
@@ -114,10 +114,9 @@ export type Settings = {
   toolOutputLimit: number;
   maxSteps: number;
   temperature: number;
+  reasoningEffort: ReasoningEffort;
   smallQuant: string;
-  omniQuant: string;
   smallURL: string;
-  omniURL: string;
   guardianURL: string;
   browserURL: string;
 };

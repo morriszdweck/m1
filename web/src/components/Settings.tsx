@@ -2,13 +2,11 @@
 
 import { useState } from "react";
 import {
-  AudioLines,
   Bell,
   Brain,
   Check,
   Cpu,
   Download,
-  Eye,
   FolderOpen,
   Globe,
   Link2,
@@ -22,10 +20,8 @@ import {
   Sun,
   Trash2,
   User,
-  Volume2,
 } from "lucide-react";
 import { api } from "../api";
-import { speak, stopSpeaking } from "../audio/speak";
 import { errorToast, toast, useStore } from "../store";
 import type { ModelResolution, Part, Settings as SettingsType } from "../types";
 import { DEVICE, IS_MAC, cx, timeAgo } from "../util";
@@ -38,14 +34,12 @@ const patch = (body: Partial<SettingsType>) => api("PATCH", "/api/settings", bod
 const PART_ICONS: Record<Part["id"], JSX.Element> = {
   engine: <Cpu size={18} />,
   small: <Brain size={18} />,
-  omni: <Eye size={18} />,
   guardian: <Shield size={18} />,
   browser: <Globe size={18} />,
 };
 
 const TABS = [
   { id: "general", label: "General", icon: <User size={15} /> },
-  { id: "voice", label: "Voice", icon: <AudioLines size={15} /> },
   { id: "safety", label: "Safety", icon: <Shield size={15} /> },
   { id: "downloads", label: "Downloads", icon: <Download size={15} /> },
   { id: "advanced", label: "Advanced", icon: <SlidersHorizontal size={15} /> },
@@ -70,7 +64,6 @@ export function SettingsModal() {
         </nav>
         <div className="settings-body">
           {tab === "general" && <General settings={settings} />}
-          {tab === "voice" && <Voice settings={settings} />}
           {tab === "safety" && <Safety settings={settings} />}
           {tab === "downloads" && <Downloads />}
           {tab === "advanced" && <Advanced settings={settings} />}
@@ -202,33 +195,6 @@ function NotificationButton() {
     <button className="btn" onClick={() => Notification.requestPermission().then(setState)}>
       <Bell size={14} /> Turn on
     </button>
-  );
-}
-
-function Voice({ settings }: { settings: SettingsType }) {
-  const speaking = useStore((s) => s.speaking === "preview");
-  return (
-    <>
-      <h3>Voice</h3>
-      <p className="muted">Voice chat, dictation and reading aloud all use LFM3 Omni 2B on this {DEVICE}.</p>
-      <Row title="Voice">
-        <Segmented
-          size="sm"
-          value={settings.voice}
-          onChange={(voice) => patch({ voice })}
-          options={[
-            { value: "female", label: "Voice A" },
-            { value: "male", label: "Voice B" },
-          ]}
-        />
-        <button className="btn" onClick={() => (speaking ? stopSpeaking() : speak("preview", `Hi! This is how I sound. I run right here on your ${DEVICE}.`))}>
-          {speaking ? <Square size={12} fill="currentColor" /> : <Volume2 size={14} />} {speaking ? "Stop" : "Hear it"}
-        </button>
-      </Row>
-      <Row title="Read answers aloud" detail="Speaks every new answer in text chats.">
-        <Toggle checked={settings.speakReplies} onChange={(speakReplies) => patch({ speakReplies })} />
-      </Row>
-    </>
   );
 }
 
@@ -402,7 +368,7 @@ function CustomModelModal({ part, onClose }: { part: Part; onClose: () => void }
 
   return (
     <Modal
-      title={part.custom ? "Change the Everyday brain" : "Add a model from Hugging Face"}
+      title={part.custom ? "Change the brain" : "Add a model from Hugging Face"}
       onClose={onClose}
       wide
       footer={
@@ -417,7 +383,7 @@ function CustomModelModal({ part, onClose }: { part: Part; onClose: () => void }
       }
     >
       <p className="muted">
-        Paste a model link from huggingface.co. M1 finds its GGUF files, checks the header and runs it on this {DEVICE}. It replaces the built-in LFM3 1.7B for chat.
+        Paste a model link from huggingface.co. M1 finds its GGUF files, checks the header and runs it on this {DEVICE}. It replaces the built-in model for chat. M1's prompts are tuned for the built-in model, so another one may follow them less well.
       </p>
       <div className="notice">A model you add hasn't been tested with M1's tools. While it's answering, Full Auto works like Approve for Me: Auto 150M checks each action first.</div>
       <label className="field">
@@ -478,7 +444,7 @@ function Downloads() {
           </button>
         )}
       </div>
-      <p className="muted">Everything runs on this {DEVICE}. M1 picks the right model for each message by itself.</p>
+      <p className="muted">Everything runs on this {DEVICE}.</p>
       <div className="parts">
         {parts.map((p) => (
           <PartRow key={p.id} part={p} />
@@ -491,7 +457,7 @@ function Downloads() {
   );
 }
 
-/** Swaps the Everyday brain for a GGUF model from Hugging Face. Lives in Advanced, away from Downloads and first-run setup. */
+/** Swaps the brain for a GGUF model from Hugging Face. Lives in Advanced, away from Downloads and first-run setup. */
 function EverydayModel() {
   const part = useStore((s) => s.parts.find((p) => p.id === "small"));
   const busy = useStore((s) => s.busy);
@@ -500,17 +466,17 @@ function EverydayModel() {
   const custom = part.custom;
   const changing = busy || part.status === "installing" || part.status === "starting";
   const useBuiltIn = () => {
-    if (!confirm(`Stop using ${custom?.label ?? "this model"}? Its download will be removed and the built-in LFM3 1.7B will be used.`)) return;
+    if (!confirm(`Stop using ${custom?.label ?? "this model"}? Its download will be removed and the built-in model will be used.`)) return;
     api("DELETE", "/api/models/custom").catch(errorToast);
   };
   return (
     <>
       <Row
-        title="Everyday brain model"
+        title="Brain model"
         detail={
           custom
             ? `${custom.label} · huggingface.co/${custom.repo}${custom.license ? ` · ${custom.license}` : ""}`
-            : "The built-in LFM3 1.7B. You can run a GGUF model from Hugging Face instead."
+            : "The built-in model. You can run a GGUF model from Hugging Face instead."
         }
       >
         <button className="btn" disabled={changing} onClick={() => setOpen(true)}>
@@ -546,8 +512,8 @@ function Advanced({ settings }: { settings: SettingsType }) {
       <Row title="Most steps per answer">
         <SavedInput type="number" width={110} value={String(settings.maxSteps)} onSave={num("maxSteps", 1, 20)} />
       </Row>
-      <Row title="Creativity" detail={`Temperature ${settings.temperature.toFixed(2)} for the everyday brain.`}>
-        <input type="range" min={0} max={1} step={0.05} value={settings.temperature} onChange={(e) => patch({ temperature: Number(e.target.value) })} />
+      <Row title="Creativity" detail={`Temperature ${settings.temperature.toFixed(2)}. 1.00 is what the model is tuned for.`}>
+        <input type="range" min={0} max={1.5} step={0.05} value={settings.temperature} onChange={(e) => patch({ temperature: Number(e.target.value) })} />
       </Row>
       <Row title="Delete all chats" detail="Removes every conversation and the files you added. Memory stays.">
         <button className="btn danger-text" onClick={() => confirm("Delete every chat? This can't be undone.") && api("DELETE", "/api/chats").then(() => (location.hash = "#/"), errorToast)}>
@@ -561,14 +527,14 @@ function Advanced({ settings }: { settings: SettingsType }) {
 // ---- First run ----
 
 const SIZES = [
-  { id: "small", label: "Smaller", detail: "Fastest, least space", small: "QAD-Q4_0", omni: "Q4_0" },
-  { id: "balanced", label: "Balanced", detail: "Good answers, quick", small: "Q4_K_M", omni: "Q4_K_M" },
-  { id: "best", label: "Best", detail: "Best answers, needs more memory", small: "Q8_0", omni: "Q8_0" },
+  { id: "small", label: "Smaller", detail: "Fastest, least space", small: "Q4_K_M" },
+  { id: "balanced", label: "Balanced", detail: "Good answers, quick", small: "Q5_K_M" },
+  { id: "best", label: "Best", detail: "Best answers, needs more memory", small: "Q8_0" },
 ] as const;
 type SizeId = (typeof SIZES)[number]["id"];
 
 const PLANS = {
-  all: ["engine", "small", "omni", "guardian", "browser"],
+  all: ["engine", "small", "guardian", "browser"],
   text: ["engine", "small"],
 } as const;
 
@@ -581,8 +547,7 @@ function planBytes(parts: Part[], ids: readonly Part["id"][], size: (typeof SIZE
     if (!p || p.status === "installed" || p.status === "running") return sum;
     if (!p.quants) return sum + p.bytes;
     const current = p.quants.find((q) => q.id === p.quant);
-    const chosen = p.quants.find((q) => q.id === (id === "small" ? size.small : size.omni));
-    // Omni's bytes include its audio and vision projector on top of the weights.
+    const chosen = p.quants.find((q) => q.id === size.small);
     return sum + (chosen?.bytes ?? 0) + (p.bytes - (current?.bytes ?? 0));
   }, 0);
 }
@@ -590,7 +555,7 @@ function planBytes(parts: Part[], ids: readonly Part["id"][], size: (typeof SIZE
 export function Setup() {
   const { parts, busy, settings, machine } = useStore();
   const memoryGB = machine.memoryGB;
-  const suggested: SizeId = memoryGB >= 16 ? "best" : memoryGB > 0 && memoryGB < 8 ? "small" : "balanced";
+  const suggested: SizeId = memoryGB >= 24 ? "best" : memoryGB > 0 && memoryGB < 12 ? "small" : "balanced";
   const [plan, setPlan] = useState<keyof typeof PLANS>("all");
   const [sizeId, setSizeId] = useState<SizeId>(suggested);
   const [name, setName] = useState(settings?.userName ?? "");
@@ -600,7 +565,7 @@ export function Setup() {
 
   const go = async () => {
     try {
-      await api("PATCH", "/api/settings", { userName: name.trim(), smallQuant: size.small, omniQuant: size.omni });
+      await api("PATCH", "/api/settings", { userName: name.trim(), smallQuant: size.small });
       await api("POST", "/api/parts/install", { ids: PLANS[plan] });
       // Approve for Me turns itself on once Auto 150M is ready.
       if (plan === "all") await api("PATCH", "/api/settings", { approvalMode: "approveForMe" });
@@ -676,7 +641,7 @@ export function Setup() {
             <span className="plan-size">About {gbText(planBytes(parts, PLANS.all, size))}</span>
             <ul>
               <li>Chat, writing and actions on your {DEVICE}</li>
-              <li>Voice chat, pictures and your screen</li>
+              <li>Thinks things through before it answers</li>
               <li>Auto 150M, which approves safe actions for you</li>
               <li>Clicks around websites for you</li>
             </ul>
@@ -688,7 +653,7 @@ export function Setup() {
             <span className="plan-size">About {gbText(planBytes(parts, PLANS.text, size))}</span>
             <ul>
               <li>Chat, writing and actions on your {DEVICE}</li>
-              <li>Add voice and the rest later in Settings</li>
+              <li>Add the safety and web helpers later in Settings</li>
             </ul>
           </button>
         </div>

@@ -1,17 +1,17 @@
-// Finds a tool call in model output. LFM3 writes XML-style calls when asked:
+// Finds a tool call in model output. K2 Horizon writes calls in its own format:
 //
-//   <tool_call>
-//   <function=shell>
-//   <parameter=command>
-//   ls ~/Desktop
-//   </parameter>
-//   </function>
-//   </tool_call>
+//   <ifm|tool_calls>
+//   <ifm|tool_call>shell
+//   <ifm|arg_key>command</ifm|arg_key>
+//   <ifm|arg_value>ls ~/Desktop</ifm|arg_value>
+//   </ifm|tool_call>
+//   </ifm|tool_calls>
 //
-// It also accepts LFM's pythonic form (<|tool_call_start|>[shell(command="ls")]<|tool_call_end|>),
-// a bare [shell(command="ls")] and JSON ({"name": "shell", "arguments": {...}}).
+// The stream stops at </ifm|tool_call>, so the closing tags are often missing.
+// As a fallback it also reads XML-style calls (<tool_call><function=shell>…),
+// a pythonic [shell(command="ls")] and JSON ({"name": "shell", "arguments": {...}}).
 
-const MARKERS = ["<tool_call>", "<|tool_call_start|>", "<function="];
+const MARKERS = ["<ifm|tool_calls>", "<ifm|tool_call>", "<tool_call>", "<|tool_call_start|>", "<function="];
 
 /**
  * @param {string} text model output
@@ -19,7 +19,7 @@ const MARKERS = ["<tool_call>", "<|tool_call_start|>", "<function="];
  * @returns {{text: string, call: {name: string, args: Record<string, unknown>} | null}}
  */
 export function parseToolCall(text, tools) {
-  for (const find of [findXML, findPythonic, findJSON]) {
+  for (const find of [findIFM, findXML, findPythonic, findJSON]) {
     const found = find(text);
     if (!found) continue;
     const call = normalize(found.call, tools);
@@ -49,9 +49,34 @@ export function visibleText(text) {
 
 function clean(text) {
   return text
+    .replace(/<\/?ifm\|(tool_calls?|arg_key|arg_value|tools)>/g, "")
     .replace(/<\|?\/?tool_call(_start|_end)?\|?>/g, "")
     .replace(/<\/?function[^>]*>|<\/?parameter[^>]*>/g, "")
     .trim();
+}
+
+function findIFM(text) {
+  const call = text.match(/<ifm\|tool_call>\s*([^\n<]+?)\s*(?=\n|<ifm\|arg_key>|<\/ifm\|tool_call>|$)/);
+  if (!call) return null;
+  const open = text.lastIndexOf("<ifm|tool_calls>", call.index);
+  const start = open >= 0 && text.slice(open + 16, call.index).trim() === "" ? open : call.index;
+  const end = text.indexOf("</ifm|tool_call>", call.index);
+  const body = text.slice(call.index + call[0].length, end >= 0 ? end : undefined);
+  const args = {};
+  const re = /<ifm\|arg_key>([\s\S]*?)<\/ifm\|arg_key>\s*<ifm\|arg_value>([\s\S]*?)(?:<\/ifm\|arg_value>|(?=<ifm\|arg_key>)|$)/g;
+  for (const m of body.matchAll(re)) args[m[1].trim()] = ifmValue(m[2]);
+  return { start, call: { name: call[1].trim(), args } };
+}
+
+/** Values are plain text, or JSON for numbers, lists and objects. */
+function ifmValue(raw) {
+  const v = raw.replace(/^\n|\n$/g, "");
+  if (/^\s*[[{]/.test(v)) {
+    try {
+      return JSON.parse(v);
+    } catch {}
+  }
+  return coerce(v);
 }
 
 function findXML(text) {
@@ -157,7 +182,7 @@ function coerce(value) {
   return value;
 }
 
-/** Fixes the small slips a 1.7B model makes: `shell(` as a name, or one misnamed argument. */
+/** Fixes the small slips a small model makes: `shell(` as a name, or one misnamed argument. */
 function normalize(call, tools) {
   let name = String(call.name).split("(")[0].trim().toLowerCase();
   if (name.startsWith("functions.")) name = name.slice(10);

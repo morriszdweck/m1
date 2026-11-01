@@ -2,9 +2,7 @@
 //
 //   node scripts/smoke.mjs            the server, its page and the API
 //   node scripts/smoke.mjs --models   also downloads the AI engine and the smallest
-//                                     LFM3 1.7B, then has it answer (about 1.1 GB)
-//   node scripts/smoke.mjs --omni     also downloads the smallest LFM3 Omni 2B, then
-//                                     has it speak, listen and look at a picture (1.6 GB)
+//                                     K2 Horizon 3.7B, then has it answer (about 2.5 GB)
 //   node scripts/smoke.mjs --helpers  also installs and starts Auto 150M and the
 //                                     Web helper (about 1.2 GB)
 //
@@ -24,7 +22,6 @@ const PORT = Number(process.env.SMOKE_PORT ?? 8199);
 const BASE = `http://127.0.0.1:${PORT}`;
 const MODELS = process.argv.includes("--models");
 const HELPERS = process.argv.includes("--helpers");
-const OMNI = process.argv.includes("--omni");
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "m1-smoke-"));
 
 let log = "";
@@ -51,7 +48,7 @@ function finish(code) {
 
 function fail(message) {
   console.error(`✗ ${message}\n--- server output ---\n${log.slice(-4000)}`);
-  for (const name of ["small.log", "omni.log", "guardian.log", "browser.log"]) {
+  for (const name of ["small.log", "guardian.log", "browser.log"]) {
     const file = path.join(home, "logs", name);
     if (fs.existsSync(file)) console.error(`--- ${name} ---\n${fs.readFileSync(file, "utf8").slice(-3000)}`);
   }
@@ -108,41 +105,7 @@ const variants = ggufVariants(
 check(variants.variants.length === 2 && variants.variants.some((v) => v.shards.length === 2), "it groups split GGUF files and skips projectors");
 
 /** Sends raw bytes and returns the response, for uploads and audio. */
-async function send(route, data, type, headers = {}) {
-  const res = await fetch(BASE + route, { method: "POST", headers: { "x-m1-token": token, "Content-Type": type, ...headers }, body: data });
-  if (!res.ok) fail(`POST ${route} answered ${res.status}: ${await res.text()}`);
-  return res;
-}
-
 /** A plain PNG of one color, so the picture check needs no files. */
-function solidPNG(size, [r, g, b]) {
-  const crcTable = Array.from({ length: 256 }, (_, n) => {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  const crc = (buf) => {
-    let c = 0xffffffff;
-    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  };
-  const chunk = (type, data) => {
-    const out = Buffer.alloc(12 + data.length);
-    out.writeUInt32BE(data.length, 0);
-    out.write(type, 4, "ascii");
-    data.copy(out, 8);
-    out.writeUInt32BE(crc(out.subarray(4, 8 + data.length)), 8 + data.length);
-    return out;
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(size, 0);
-  header.writeUInt32BE(size, 4);
-  header.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
-  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: size }, () => [r, g, b]).flat())]);
-  const pixels = zlib.deflateSync(Buffer.concat(Array.from({ length: size }, () => row)));
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", pixels), chunk("IEND", Buffer.alloc(0))]);
-}
-
 /** Waits for the last message of a chat to finish. */
 const answer = (id, what) =>
   waitFor(
@@ -224,21 +187,21 @@ check(foreign.status === 401, "the API refuses other websites");
 const state = await call("GET", "/api/state");
 check(state.machine.os === process.platform, `it knows this is ${process.platform} (engine build: ${state.machine.gpu})`);
 const ids = state.parts.map((p) => p.id);
-check(["engine", "small", "omni", "guardian", "browser"].every((id) => ids.includes(id)), "every part is listed");
+check(["engine", "small", "guardian", "browser"].every((id) => ids.includes(id)), "every part is listed");
 check(state.dataDir === home, "it keeps its files in the data folder it was given");
 check(state.routines.length > 0, "starter routines are there");
 
 if (MODELS) {
-  await call("PATCH", "/api/settings", { smallQuant: "QAD-Q4_0" });
+  await call("PATCH", "/api/settings", { smallQuant: "Q4_K_M", reasoningEffort: "low" });
   await call("POST", "/api/parts/install", { ids: ["engine", "small"] });
-  await waitFor("LFM3 1.7B", (s) => s.parts.find((p) => p.id === "small" && p.status === "running"), 30);
+  await waitFor("K2 Horizon 3.7B", (s) => s.parts.find((p) => p.id === "small" && p.status === "running"), 60);
   const engine = (await call("GET", "/api/state")).parts.find((p) => p.id === "engine");
-  check(true, `LFM3 1.7B runs (${engine.detail ?? "engine installed"})`);
+  check(true, `K2 Horizon 3.7B runs (${engine.detail ?? "engine installed"})`);
 
   const chat = await call("POST", "/api/chats", { text: "Reply with one word: what color is a clear daytime sky?" });
   const reply = await answer(chat.id, "an answer");
-  check(reply.status === "done" && reply.content.trim().length > 0, `LFM3 1.7B answered: ${JSON.stringify(reply.content.trim().slice(0, 80))}`);
-  check(reply.model === "small", "the message went to LFM3 1.7B");
+  check(reply.status === "done" && reply.content.trim().length > 0, `K2 Horizon 3.7B answered: ${JSON.stringify(reply.content.trim().slice(0, 80))}`);
+  check(reply.model === "small", "the message went to K2 Horizon 3.7B");
 
   // A small model doesn't always pick a tool, so this only fails when a tool it picked breaks.
   const tool = await call("POST", "/api/chats", { text: "Run this shell command and tell me what it prints: echo m1-smoke-ok" });
@@ -261,24 +224,6 @@ if (MODELS) {
   }
 }
 
-if (OMNI) {
-  await call("PATCH", "/api/settings", { omniQuant: "Q4_0" });
-  await call("POST", "/api/parts/install", { ids: ["engine", "omni"] });
-  await waitFor("LFM3 Omni 2B", (s) => s.parts.find((p) => p.id === "omni" && p.status === "running"), 40);
-  check(true, "LFM3 Omni 2B runs");
-
-  const wav = Buffer.from(await (await send("/api/speak", JSON.stringify({ text: "Hello from Linux." }), "application/json")).arrayBuffer());
-  check(wav.toString("ascii", 0, 4) === "RIFF" && wav.length > 8000, `it reads text aloud (${wav.length} bytes of WAV)`);
-  const heard = await (await send("/api/transcribe", wav, "audio/wav")).json();
-  check(/hello|linux/i.test(heard.text), `it hears its own voice: ${JSON.stringify(heard.text)}`);
-
-  const picture = await (await send("/api/uploads", solidPNG(64, [220, 30, 30]), "image/png", { "x-file-name": "red.png" })).json();
-  check(picture.kind === "image", "a picture uploads");
-  const chat = await call("POST", "/api/chats", { text: "What color is this picture? Answer with one word.", attachments: [picture.id] });
-  const reply = await answer(chat.id, "Omni to look");
-  check(reply.status === "done" && reply.model === "omni", `LFM3 Omni 2B looked at it: ${JSON.stringify(reply.content.trim().slice(0, 80))}`);
-  check(/red/i.test(reply.content), "it saw red");
-}
 
 if (HELPERS) {
   await call("POST", "/api/parts/install", { ids: ["guardian", "browser"] });
