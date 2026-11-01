@@ -93,6 +93,7 @@ function General({ settings }: { settings: SettingsType }) {
       </Row>
       <Row title="Personality" detail="How M1 talks to you.">
         <select className="input" value={settings.personality} onChange={(e) => patch({ personality: e.target.value as SettingsType["personality"] })}>
+          <option value="default">Default</option>
           <option value="friendly">Friendly</option>
           <option value="concise">Short and to the point</option>
           <option value="playful">Playful</option>

@@ -24,7 +24,7 @@ export const xmlCall = (name, args) =>
 
 function persona() {
   const name = settings.userName ? ` The user's name is ${settings.userName}.` : "";
-  return `${PERSONALITIES[settings.personality] ?? ""}${name}`;
+  return `${PERSONALITIES[settings.personality] ?? ""}${name}`.trim();
 }
 
 /** The tools block, worded the way Bonsai's chat template writes it. */
@@ -54,7 +54,7 @@ function toolsBlock(tools) {
 
 export function systemPrompt({ tools, query, project }) {
   return [
-    `You are M1, a private assistant running locally on the user's ${MACHINE}. ${persona()}`,
+    `You are M1, a private assistant running locally on the user's ${MACHINE}. ${persona()}`.trim(),
     "Use Markdown when it helps: headings, lists, tables, fenced code blocks with a language, and $...$ or $$...$$ for math.",
     project
       ? `Now: ${now()}. Project folder: ${tilde(project)}. You can only read, write and run commands inside this folder; relative paths start there.`

@@ -77,6 +77,7 @@ export function flushAll() {
 // ---- Settings ----
 
 export const PERSONALITIES = {
+  default: "",
   friendly: "Be warm, clear and patient. Explain simply.",
   concise: "Be extremely brief. No filler.",
   playful: "Be witty and fun, but still helpful.",
@@ -85,7 +86,8 @@ export const PERSONALITIES = {
 
 export const DEFAULTS = {
   userName: "",
-  personality: "friendly",
+  personality: "default",
+  personalityV: 2,
   approvalMode: "askAlways", // askAlways | approveForMe (needs Auto 150M) | fullAuto
   theme: "system",
   autoUpdate: true,
@@ -120,6 +122,11 @@ const saved = load("settings.json", {});
 if ("temperatureV" in saved) {
   if (saved.temperature === 0.65) delete saved.temperature;
   delete saved.temperatureV;
+}
+// Build 15 added a neutral "default" personality. Move everyone who was on the old default, Friendly, onto it.
+if (!saved.personalityV) {
+  if (saved.personality === "friendly") delete saved.personality;
+  saved.personalityV = 2;
 }
 // Drop saved choices that no longer exist (e.g. K2's Q5_K_M after the switch to Bonsai) and retired keys.
 for (const [key, allowed] of Object.entries(CHOICES)) if (key in saved && !allowed.includes(saved[key])) delete saved[key];

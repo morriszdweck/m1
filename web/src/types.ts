@@ -102,7 +102,7 @@ export type ApprovalMode = "askAlways" | "approveForMe" | "fullAuto";
 
 export type Settings = {
   userName: string;
-  personality: "friendly" | "concise" | "playful" | "professional";
+  personality: "default" | "friendly" | "concise" | "playful" | "professional";
   approvalMode: ApprovalMode;
   theme: "system" | "light" | "dark";
   autoUpdate: boolean;
