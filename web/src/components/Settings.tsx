@@ -492,9 +492,6 @@ function Advanced({ settings }: { settings: SettingsType }) {
       <Row title="Tool output kept" detail="Characters of each tool result the model sees.">
         <SavedInput type="number" width={110} value={String(settings.toolOutputLimit)} onSave={num("toolOutputLimit", 500, 20000)} />
       </Row>
-      <Row title="Most steps per answer">
-        <SavedInput type="number" width={110} value={String(settings.maxSteps)} onSave={num("maxSteps", 1, 20)} />
-      </Row>
       <Row title="Creativity" detail={`Temperature ${settings.temperature.toFixed(2)}. 1.00 is what the model is tuned for.`}>
         <input type="range" min={0} max={1.5} step={0.05} value={settings.temperature} onChange={(e) => patch({ temperature: Number(e.target.value) })} />
       </Row>

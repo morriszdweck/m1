@@ -19,6 +19,7 @@ const uid = () => crypto.randomUUID();
 const STOPS = ["</tool_call>"];
 /** How much Spark may write per step at each effort, thinking included. */
 const STEP_TOKENS = { instant: 2048, medium: 8192, high: 16384 };
+const RUNAWAY = 100;
 const OPEN = ["pending", "checking", "approval", "running"];
 
 // Small models reach for tools on plain asks ("make a table", "explain X") and
@@ -196,11 +197,13 @@ export const agent = {
       const model = MODELS[route.id];
       reply.model = route.id;
       const offer = wantsTools(chat, request);
+      // Set when a step thinks past its token budget: the next step skips thinking and acts.
+      let rush = false;
       for (let step = 0; ; step++) {
-        // Two searches are plenty for a small model; after that it should read or answer.
-        const searches = reply.steps.filter((x) => x.tool === "web_search").length;
-        const tools = offer ? activeTools().filter((t) => t.name !== "web_search" || searches < 2) : [];
-        const final = step === settings.maxSteps;
+        // No per-tool or step limits: the model works until it answers. RUNAWAY is only a
+        // backstop for a loop that never ends, far past any real task.
+        const tools = offer ? activeTools() : [];
+        const final = step === RUNAWAY;
         // A custom model may hold less than the usual budget: keep half its context for the answer.
         const context = backends.contextTokens(route.id);
         const budget = Math.min(settings.contextBudget, Math.floor(context / 2));
@@ -221,7 +224,8 @@ export const agent = {
         const thinkStart = Date.now();
         let thinkEnd = 0;
         // The effort slider: Spark answers straight away (Instant), thinks briefly (Medium) or thinks long (High).
-        const effort = STEP_TOKENS[settings.reasoningEffort] ? settings.reasoningEffort : "medium";
+        const effort = rush ? "instant" : STEP_TOKENS[settings.reasoningEffort] ? settings.reasoningEffort : "medium";
+        rush = false;
         const maxTokens = Math.max(256, Math.min(STEP_TOKENS[effort], context - budget));
         for await (const part of stream({
           url: model.url(),
@@ -259,14 +263,35 @@ export const agent = {
           reply.thinkingMs = (reply.thinkingMs ?? 0) + ((thinkEnd || Date.now()) - thinkStart);
         }
         const { text, call } = parseToolCall(live, new Map(tools.map((t) => [t.name, t])));
+        // A call to a tool that isn't offered right now (one that's switched off) or a
+        // garbled call: tell the model and let it go on, instead of showing the raw call as the answer.
+        if (!call && tools.length && !final) {
+          const misfire = parseToolCall(live, toolMap).call;
+          if (misfire || /<tool_call>|<arg_key>|<function=/.test(live)) {
+            const name = misfire?.name ?? "tool";
+            const result = misfire
+              ? `${name} isn't available right now. Use one of the listed functions, or answer.`
+              : "That function call wasn't in the right format. Use <tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call> with a listed function, or answer.";
+            const tool = misfire && toolMap.get(name);
+            reply.steps.push({ id: uid(), tool: name, args: misfire?.args ?? {}, label: tool ? tool.label(misfire.args, chat.project) : "Tool call", note: text, status: "error", result, at: Date.now() });
+            live = "";
+            emitChat(chat);
+            continue;
+          }
+        }
         live = "";
+        // Thought past the budget without acting: go again without thinking, instead of giving up.
+        if (!inline.done && !call && effort !== "instant" && !final) {
+          rush = true;
+          continue;
+        }
         if (!call) {
           reply.content =
             text || (inline.done ? "I couldn't come up with a reply. Try asking another way." : "I ran out of room while thinking. Try a lower effort, or ask a smaller question.");
           break;
         }
         if (final) {
-          reply.content = `${text ? text + "\n\n" : ""}I stopped after ${settings.maxSteps} steps. Say **continue** if you want me to keep going.`;
+          reply.content = `${text ? text + "\n\n" : ""}I stopped after ${RUNAWAY} steps. Say **continue** if you want me to keep going.`;
           break;
         }
         const tool = toolMap.get(call.name);

@@ -95,7 +95,6 @@ export const DEFAULTS = {
   guardianThreshold: 0.5,
   contextBudget: 6000,
   toolOutputLimit: 1200,
-  maxSteps: 8,
   temperature: 1.0,
   reasoningEffort: "medium", // instant | medium | high
   smallQuant: "Q4_K_M",

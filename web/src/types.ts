@@ -113,7 +113,6 @@ export type Settings = {
   guardianThreshold: number;
   contextBudget: number;
   toolOutputLimit: number;
-  maxSteps: number;
   temperature: number;
   reasoningEffort: ReasoningEffort;
   smallQuant: string;

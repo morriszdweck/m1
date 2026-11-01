@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DIRS, SHELL, bus, isLocal, load, save, settings, shell } from "./core.js";
+import { DIRS, SHELL, bus, isLocal, load, run, save, settings, shell } from "./core.js";
 import { backends } from "./backends.js";
 import { memory } from "./memory.js";
 import { notify, openApp, openPath, readClipboard, writeClipboard } from "./platform.js";
@@ -109,33 +109,89 @@ async function bridge(action, body) {
 }
 
 async function search(query) {
-  // DuckDuckGo sometimes drops the first connection, so try a few times with a short timeout.
-  let html;
+  // DuckDuckGo first. It blocks quick runs of searches (an "anomaly" page), so Brave, then Bing, take over.
+  let reached = false;
+  for (const engine of [duckduckgo, braveSearch, bingSearch]) {
+    let results = await engine(query).catch(() => null);
+    // Bing sometimes searches only the first word for scripted visits ("Mouse - Wikipedia"): keep what matches the query.
+    if (results && engine === bingSearch) results = results.filter((r) => relevant(r, query));
+    if (results?.length) return format(results);
+    if (results) reached = true;
+  }
+  if (!reached) throw new Error("Couldn't reach the search engine. Check the internet connection.");
+  return "No results.";
+}
+
+const STOPWORDS = new Set("the and for with from that this what when where which who how are was were has have into about than then them they their there your you".split(" "));
+/** True when a result mentions at least two of the query's words (or the only one). */
+function relevant(result, query) {
+  const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [])].filter((w) => !STOPWORDS.has(w));
+  const text = `${result.title} ${result.snippet} ${result.url}`.toLowerCase();
+  return words.filter((w) => text.includes(w)).length >= Math.min(2, words.length);
+}
+
+const format = (results) => results.slice(0, 6).map((r, i) => `${i + 1}. ${r.title}\n${r.url}\n${r.snippet}`).join("\n\n");
+
+/** Fetches a search page, retrying a dropped first connection with a short timeout. */
+async function page(url, init = {}) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const res = await fetch("https://html.duckduckgo.com/html/", {
-        method: "POST",
-        headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ q: query }),
-        signal: AbortSignal.timeout(7_000),
-      });
-      html = await res.text();
-      break;
+      const res = await fetch(url, { ...init, headers: { "User-Agent": UA, ...init.headers }, signal: AbortSignal.timeout(7_000) });
+      return await res.text();
     } catch (e) {
-      if (attempt === 3) throw new Error("Couldn't reach the search engine. Check the internet connection.");
+      if (attempt === 3) throw e;
     }
   }
+}
+
+async function duckduckgo(query) {
+  const html = await page("https://html.duckduckgo.com/html/", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ q: query }),
+  });
   const links = [...html.matchAll(/class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
   const snippets = [...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)];
-  const results = links.slice(0, 6).map((m, i) => {
-    let href = decode(m[1]);
-    const real = href.match(/uddg=([^&]+)/);
-    if (real) href = decodeURIComponent(real[1]);
-    const title = htmlText(m[2]);
-    const snippet = snippets[i] ? htmlText(snippets[i][1]) : "";
-    return `${i + 1}. ${title}\n${href}\n${snippet}`;
+  return links.map((m, i) => {
+    let url = decode(m[1]);
+    const real = url.match(/uddg=([^&]+)/);
+    if (real) url = decodeURIComponent(real[1]);
+    return { title: htmlText(m[2]), url, snippet: snippets[i] ? htmlText(snippets[i][1]) : "" };
   });
-  return results.length ? results.join("\n\n") : "No results.";
+}
+
+async function braveSearch(query) {
+  // Brave turns away Node's own HTTP client, but not curl.
+  const html = await run("curl", ["-sfL", "--max-time", "10", "-A", UA, "-H", "Accept-Language: en-US,en;q=0.9", `https://search.brave.com/search?${new URLSearchParams({ q: query })}`], { timeout: 15_000 });
+  const out = [];
+  for (const block of html.split('data-type="web"').slice(1)) {
+    const a = block.match(/<a href="(https?:[^"]+)"/);
+    const title = block.match(/search-snippet-title[^>]*>([\s\S]*?)<\/div>/);
+    if (!a || !title) continue;
+    const p = block.match(/class="content [^"]*"[^>]*>([\s\S]*?)<\/div>/);
+    out.push({ title: htmlText(title[1]), url: decode(a[1]), snippet: p ? htmlText(p[1]) : "" });
+  }
+  return out;
+}
+
+async function bingSearch(query) {
+  const html = await page(`https://www.bing.com/search?${new URLSearchParams({ q: query, setlang: "en" })}`, { headers: { "Accept-Language": "en-US,en;q=0.9" } });
+  const out = [];
+  for (const [item] of html.matchAll(/<li class="b_algo"[\s\S]*?<\/li>/g)) {
+    const a = item.match(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+    if (!a) continue;
+    let url = decode(a[1]);
+    // Bing wraps links as /ck/a?…&u=a1<base64url of the real address>.
+    const wrapped = url.match(/[?&]u=a1([^&]+)/);
+    if (wrapped) {
+      try {
+        url = Buffer.from(wrapped[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+      } catch {}
+    }
+    const p = item.match(/<p[^>]*>([\s\S]*?)<\/p>/);
+    out.push({ title: htmlText(a[2]), url, snippet: p ? htmlText(p[1]) : "" });
+  }
+  return out;
 }
 
 // ---- Reminders ----
@@ -261,7 +317,13 @@ export const TOOLS = [
         signal: AbortSignal.timeout(20_000),
       });
       const type = res.headers.get("content-type") ?? "";
+      // PDFs, images and other binary files come back as noise that fills the context.
+      if (/pdf|image|audio|video|zip|octet-stream/.test(type) || /\.pdf($|\?)/i.test(String(a.url))) {
+        res.body?.cancel().catch(() => {});
+        return `This link is a ${type.split(";")[0] || "binary"} file, which M1 can't read as text. Try a normal web page (HTML) instead.`;
+      }
       const body = await res.text();
+      if (body.startsWith("%PDF")) return "This link is a PDF, which M1 can't read as text. Try a normal web page (HTML) instead.";
       if (!type.includes("html")) return body;
       const title = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
       // Skip menus and footers when the page marks its main content.
