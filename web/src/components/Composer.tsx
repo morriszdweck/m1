@@ -1,5 +1,5 @@
-// The message box: text and text files, the permissions menu, the project
-// picker and the reasoning effort slider.
+// The message box: text and text files, the permissions and reasoning effort menus,
+// and the project chin under a new chat.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, FileText, Paperclip, ShieldCheck, ShieldQuestion, Square, X, Zap } from "lucide-react";
@@ -7,7 +7,7 @@ import { api, upload } from "../api";
 import { errorToast, go, toast, useStore } from "../store";
 import type { ApprovalMode, Attachment, Chat, Part } from "../types";
 import { DEVICE, cx } from "../util";
-import { EffortSlider } from "./EffortSlider";
+import { EffortMenu } from "./EffortMenu";
 import { ProjectPicker } from "./ProjectPicker";
 import { Menu, Spinner } from "./ui";
 
@@ -276,8 +276,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
                 onClick: () => api("PATCH", "/api/settings", { approvalMode: m.value }).catch(errorToast),
               }))}
             />
-            <ProjectPicker chat={chat} />
-            <EffortSlider />
+            <EffortMenu />
             <div className="composer-spacer" />
             {busy ? (
               <button className="round-btn primary" onClick={() => api("POST", `/api/chats/${chat!.id}/stop`).catch(errorToast)} aria-label="Stop" title="Stop">
@@ -290,6 +289,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
             )}
           </div>
       </div>
+      {!chat && <ProjectPicker />}
     </div>
   );
 }

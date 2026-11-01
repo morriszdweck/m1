@@ -688,7 +688,10 @@ input[type="range"] {
 }
 .logo {
   display: block;
-  border-radius: 6px;
+  color: var(--accent-text);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
 }
 .nav {
   display: flex;
@@ -1677,21 +1680,32 @@ input[type="range"] {
   color: var(--fg-3);
 }
 /* The project tray tucked under the message box */
-.project-pick {
-  display: inline-flex;
+.composer {
+  position: relative;
+  z-index: 1;
+}
+.composer-tray {
+  position: relative;
+  display: flex;
   align-items: center;
-  min-width: 0;
+  gap: 2px;
+  margin: -24px 26px 0;
+  padding: 30px 10px 6px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 22px 22px;
+  background: var(--panel);
 }
 .tray-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
-  max-width: 220px;
-  height: 36px;
+  max-width: 340px;
+  height: 32px;
   padding: 0 12px 0 10px;
   border: 0;
-  border-radius: 18px;
+  border-radius: 16px;
   background: none;
   color: var(--fg-2);
   font-size: 13.5px;
@@ -1738,11 +1752,8 @@ input[type="range"] {
   color: var(--fg);
 }
 @media (max-width: 560px) {
-  .tray-btn {
-    max-width: 130px;
-  }
-  .tray-btn:not(.on) > span {
-    display: none;
+  .composer-tray {
+    margin: -24px 14px 0;
   }
 }
 .folder-path {
@@ -2671,7 +2682,6 @@ input[type="range"] {
 }
 .setup-card .logo {
   align-self: center;
-  border-radius: 12px;
 }
 .setup-card h1 {
   margin: 4px 0 0;
@@ -2919,70 +2929,5 @@ input[type="range"] {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
-  }
-}
-
-/* Reasoning effort slider, in the message box's bottom row. */
-.effort {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  height: 36px;
-  padding: 0 12px 0 10px;
-  border-radius: 18px;
-  color: var(--fg-2);
-  font-size: 13.5px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.effort:hover,
-.effort:focus-within {
-  background: var(--hover-strong);
-  color: var(--fg);
-}
-.effort > svg {
-  flex: none;
-}
-.effort > span {
-  min-width: 50px;
-}
-.effort input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 64px;
-  height: 4px;
-  margin: 0;
-  border-radius: 2px;
-  background: linear-gradient(to right, var(--accent) var(--fill, 100%), var(--hover-strong) var(--fill, 100%));
-  cursor: pointer;
-}
-.effort input[type="range"]:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-}
-.effort input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  background: var(--bg, #fff);
-}
-.effort input[type="range"]::-moz-range-thumb {
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  background: var(--bg, #fff);
-}
-@media (max-width: 560px) {
-  .effort > span {
-    display: none;
-  }
-  .effort input[type="range"] {
-    width: 48px;
   }
 }

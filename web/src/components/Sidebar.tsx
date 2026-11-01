@@ -21,8 +21,13 @@ import type { Chat } from "../types";
 import { IS_MAC, chatMarkdown, cx, download, groupChats } from "../util";
 import { IconButton, Menu, Spinner, StatusDot } from "./ui";
 
+/** The logo is the name itself, in blue. */
 export function Logo({ size = 22 }: { size?: number }) {
-  return <img src="/icon.svg" width={size} height={size} alt="" className="logo" />;
+  return (
+    <span className="logo" style={{ fontSize: size * 0.95 }} aria-label="M1">
+      M1
+    </span>
+  );
 }
 
 export function Sidebar() {
@@ -65,7 +70,6 @@ export function Sidebar() {
         <div className="sidebar-head">
           <div className="brand">
             <Logo />
-            <span>M1</span>
           </div>
           <IconButton label="Close sidebar" className="mobile-only" onClick={() => useStore.setState({ sidebarOpen: false })}>
             <X size={18} />
