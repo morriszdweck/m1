@@ -88,9 +88,11 @@ function EffortSlider({ index }: { index: number }) {
         onPointerUp={(e) => pick(stopAt(e))}
       >
         {LEVELS.map((l, i) => (
-          <span key={l.value} className={cx("effort-tick", i === shown && "hidden")} style={{ left: at(i, last) }} />
+          <span key={l.value} className={cx("effort-tick", i <= shown && "hidden")} style={{ left: at(i, last) }} />
         ))}
-        <span className="effort-thumb" style={{ left: at(shown, last) }} />
+        {/* Colour fills the track up to the thumb: a sliver at Low, half at Medium, all of it at High. */}
+        <span className="effort-fill" style={{ width: `calc(${at(shown, last)} + ${PAD}px)` }} />
+        <span className="effort-thumb" style={{ left: `calc(${at(shown, last)} + 8px)` }} />
       </div>
     </div>
   );
