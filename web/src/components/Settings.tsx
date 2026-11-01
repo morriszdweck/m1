@@ -494,7 +494,7 @@ function Advanced({ settings }: { settings: SettingsType }) {
       <Row title="Most steps per answer">
         <SavedInput type="number" width={110} value={String(settings.maxSteps)} onSave={num("maxSteps", 1, 20)} />
       </Row>
-      <Row title="Creativity" detail={`Temperature ${settings.temperature.toFixed(2)}. 0.65 is the default.`}>
+      <Row title="Creativity" detail={`Temperature ${settings.temperature.toFixed(2)}. 1.00 is what the model is tuned for.`}>
         <input type="range" min={0} max={1.5} step={0.05} value={settings.temperature} onChange={(e) => patch({ temperature: Number(e.target.value) })} />
       </Row>
       <Row title="Delete all chats" detail="Removes every conversation and the files you added. Memory stays.">

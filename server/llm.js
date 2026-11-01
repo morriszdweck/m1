@@ -9,7 +9,7 @@ import { splitThink } from "./think.js";
  * Streams a chat completion. Yields {content}, then {usage} and {timings} when the
  * server reports them. effort is K2 Horizon's reasoning effort: low, medium or high.
  */
-export async function* stream({ url, model, messages, temperature = 0.65, topP = 0.95, maxTokens = 1024, stop, effort = "high", signal }) {
+export async function* stream({ url, model, messages, temperature = 1.0, topP = 0.95, maxTokens = 1024, stop, effort = "high", signal }) {
   if (!isLocal(url)) throw new Error("Refusing a model address that isn't on this computer.");
   let res;
   try {
