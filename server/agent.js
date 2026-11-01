@@ -391,11 +391,15 @@ export const agent = {
     const out = await complete({
       url: settings.smallURL,
       model: MODELS.small.id,
-      temperature: 0.6,
+      temperature: 0.3,
       maxTokens: 400,
+      // A system prompt about "naming chats" makes K2 Horizon answer "ChatGPT", so it gets
+      // one plain request with examples instead.
       messages: [
-        { role: "system", content: "You name chats. Reply with a 2 to 5 word title in plain words, nothing else." },
-        { role: "user", content: `Name a chat that starts with this message:\n"""${text.slice(0, 600)}"""` },
+        {
+          role: "user",
+          content: `Write a short title (2 to 5 words) that says what this request is about. Use the topic, not a product or assistant name. Reply with the title only.\n\nExamples:\n"How do I boil an egg?" -> Boiling an egg\n"fix my python import error" -> Python import error\n\nRequest: """${text.slice(0, 600)}"""`,
+        },
       ],
     });
     const title = out.split("\n")[0].replace(/^(title:)?["'#*\s]+|["'.*\s]+$/gi, "").slice(0, 60);
