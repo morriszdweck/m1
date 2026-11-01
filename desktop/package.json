@@ -1,0 +1,41 @@
+{
+  "name": "m1-desktop",
+  "productName": "M1",
+  "version": "1.0.1",
+  "private": true,
+  "description": "M1 for macOS: a window onto the M1 that runs on this computer.",
+  "license": "MIT",
+  "author": "Mincoffical",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac dmg --arm64 --x64"
+  },
+  "devDependencies": {
+    "electron": "44.8.0",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "codes.mincoffical.m1",
+    "productName": "M1",
+    "copyright": "Mincoffical",
+    "files": ["main.cjs", "setup.html", "package.json"],
+    "directories": { "buildResources": "build", "output": "dist" },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "M1 listens when you talk to it in voice chat or dictate a message.",
+        "NSCameraUsageDescription": "M1 looks through the camera only when you turn it on in voice chat.",
+        "NSAppleEventsUsageDescription": "M1 can control other apps when you ask it to."
+      }
+    },
+    "dmg": {
+      "title": "M1",
+      "artifactName": "M1-${arch}.dmg"
+    }
+  }
+}

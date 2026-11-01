@@ -1,0 +1,226 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Build and smoke test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: for f in server/*.js scripts/*.mjs; do node --check "$f"; done
+      - run: bash -n install.sh && bash -n scripts/start.sh
+      - run: npm test
+      - name: Project folders keep the agent inside them
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update && sudo apt-get install -y bubblewrap; fi
+          # The arm runner's kernel blocks bubblewrap, so it tests the fallback path check instead.
+          if [ "${{ matrix.os }}" = ubuntu-24.04-arm ]; then node scripts/project-check.mjs; else node scripts/project-check.mjs --need-sandbox; fi
+      - run: node scripts/bundle.mjs --build 1 && tar -tzf release/m1.tar.gz m1/build.json m1/node_modules/ws/package.json
+
+  bundle:
+    name: Ready-to-run bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the build number is the number of commits
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Pack it, plus a newer build to test updating with
+        run: |
+          node scripts/bundle.mjs
+          next=$(( $(git rev-list --count HEAD) + 1 ))
+          node scripts/bundle.mjs --build "$next" --url http://127.0.0.1:8300/m1.tar.gz --out release-next
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle
+          path: release/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-next
+          path: release-next/
+          if-no-files-found: error
+
+  desktop:
+    name: Linux desktop tools (X11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y xvfb xclip imagemagick ffmpeg pandoc libnotify-bin dunst dbus-x11
+      - run: npm ci --omit=dev
+      - name: Check the clipboard, screen, conversions and ports
+        run: |
+          xvfb-run -a dbus-run-session -- bash -c '
+            dunst & sleep 1
+            node scripts/desktop-check.mjs'
+
+  install:
+    name: One-line install and self-update on ${{ matrix.image }}
+    needs: bundle
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:24.04", "debian:12", "fedora:41"]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install curl and tar
+        run: |
+          if command -v apt-get >/dev/null; then apt-get update && apt-get install -y curl ca-certificates tar gzip procps
+          else dnf install -y curl tar gzip procps-ng findutils gawk; fi
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle
+          path: /tmp/bundle
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle-next
+          path: /tmp/next
+      - name: Run install.sh with this commit's bundle; it starts, has an app menu entry and a command
+        run: |
+          M1_BUNDLE=/tmp/bundle/m1.tar.gz M1_UPDATE_URL=http://127.0.0.1:8300/latest.json bash install.sh
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8270/healthz && break; sleep 1; done
+          curl -fs http://127.0.0.1:8270/healthz | grep -q m1
+          test -f "$HOME/.local/share/applications/m1.desktop"
+          test -x "$HOME/.local/bin/m1"
+          test -x "$HOME/.m1/node/bin/node"
+      - name: It updates itself to a newer build and comes back up
+        run: |
+          node="$HOME/.m1/node/bin/node"
+          next="$("$node" -p 'require("/tmp/next/latest.json").build')"
+          (cd /tmp/next && "$node" -e 'const fs = require("fs"); require("http").createServer((q, s) => fs.createReadStream("." + q.url).on("error", () => { s.statusCode = 404; s.end(); }).pipe(s)).listen(8300, "127.0.0.1")' &)
+          sleep 1
+          token="$(curl -fs http://127.0.0.1:8270/ | grep -o 'm1-token" content="[^"]*' | cut -d'"' -f3)"
+          curl -fs -X POST -H "X-M1-Token: $token" http://127.0.0.1:8270/api/update/check | grep -q '"state":"ready"'
+          curl -fs -X POST -H "X-M1-Token: $token" http://127.0.0.1:8270/api/update/apply
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8270/healthz | grep -q "\"build\":$next" && break; sleep 1; done
+          curl -fs http://127.0.0.1:8270/healthz | grep -q "\"build\":$next"
+          test ! -e "$HOME/.m1/app.old"
+          "$HOME/.local/bin/m1" stop
+      - if: failure()
+        run: cat "$HOME/.local/share/m1/logs/"*.log || true
+
+  models:
+    name: LFM3 1.7B answers on ${{ matrix.os }} (CPU)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Download the engine and the smallest LFM3 1.7B, chat and run a tool
+        run: node scripts/smoke.mjs --models
+        timeout-minutes: 40
+
+  omni:
+    name: LFM3 Omni 2B speaks, listens and sees on Linux (CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Download the engine and the smallest Omni, then speak, transcribe and describe a picture
+        run: node scripts/smoke.mjs --omni
+        timeout-minutes: 50
+
+  helpers:
+    name: Safety and Web helpers on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Install Auto 150M and Betterwright and start them
+        run: node scripts/smoke.mjs --helpers
+        timeout-minutes: 40
+
+  mac-app:
+    name: M1 Mac app (DMG)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - run: node --check main.cjs
+        working-directory: desktop
+      - name: Build the app for Apple silicon and Intel, signed ad hoc
+        run: npx electron-builder --mac dmg --arm64 --x64 --publish never
+        working-directory: desktop
+      - name: It is a real app with the right name and icon
+        run: |
+          for arch in arm64 x64; do test -s "desktop/dist/M1-$arch.dmg"; done
+          test -x "desktop/dist/mac-arm64/M1.app/Contents/MacOS/M1"
+          plutil -p "desktop/dist/mac-arm64/M1.app/Contents/Info.plist" | grep -q codes.mincoffical.m1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-app
+          path: desktop/dist/*.dmg
+
+  release:
+    name: Publish the build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check, desktop, install, mac-app]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-app
+          path: release
+      - name: Publish it as the latest release, which installed copies update to
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ github.event.head_commit.message }}
+        run: |
+          build="$(node -p 'require("./release/latest.json").build')"
+          if gh release view "build-$build" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "build-$build is already out."
+            exit 0
+          fi
+          gh release create "build-$build" release/m1.tar.gz release/latest.json release/M1-arm64.dmg release/M1-x64.dmg \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Build $build" --notes "$NOTES" --latest

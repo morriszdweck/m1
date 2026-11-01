@@ -1,0 +1,14 @@
+{
+  "name": "m1-bridge",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Betterwright bridge for M1",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "betterwright": "^2.7.3",
+    "bun": "^1.4.4"
+  }
+}
