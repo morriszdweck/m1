@@ -94,7 +94,7 @@ export const DEFAULTS = {
   contextBudget: 6000,
   toolOutputLimit: 1200,
   maxSteps: 8,
-  temperature: 1.0,
+  temperature: 0.65,
   reasoningEffort: "high",
   smallQuant: "Q5_K_M",
   smallURL: "http://127.0.0.1:8280/v1",
@@ -122,7 +122,13 @@ const CHOICES = {
   reasoningEffort: ["low", "medium", "high"],
 };
 
-export const settings = { ...DEFAULTS, ...load("settings.json", {}) };
+const saved = load("settings.json", {});
+// The default temperature went from 1.0 to 0.65. Move people still on the old default, once.
+if (saved.temperatureV !== 2) {
+  if (saved.temperature === 1) delete saved.temperature;
+  saved.temperatureV = 2;
+}
+export const settings = { ...DEFAULTS, ...saved };
 
 /** Applies only known keys of the right type. Every endpoint must stay on this machine. */
 export function updateSettings(patch) {
