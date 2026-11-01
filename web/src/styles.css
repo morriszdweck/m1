@@ -1938,6 +1938,44 @@ input[type="range"] {
   opacity: 1;
 }
 
+.dictation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 2px 2px 2px 8px;
+}
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: pulse 1.2s infinite;
+}
+.rec-time {
+  min-width: 42px;
+  color: var(--fg-2);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+.rec-level {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 26px;
+  overflow: hidden;
+}
+.rec-level span {
+  width: 3px;
+  flex: none;
+  border-radius: 2px;
+  background: var(--fg-2);
+  transition: height 0.08s;
+}
+
 .drop-overlay {
   position: fixed;
   inset: 0;

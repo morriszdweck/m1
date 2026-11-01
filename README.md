@@ -65,7 +65,8 @@ sudo apt install wl-clipboard xclip libnotify-bin pandoc
 | --- | --- | --- |
 | AI engine | [llama.cpp](https://github.com/ggml-org/llama.cpp) server, latest release | ~30 MB |
 | Brain | [K2 Horizon 3.7B](https://huggingface.co/IFM/K2-Horizon-3.7B-GGUF) (GGUF, Q4_K_M to BF16; Q5_K_M by default) | 2.5–7.5 GB |
-| Safety helper | Auto 150M, run with Python through `uv` | ~1.1 GB |
+| Safety helper | Auto 150M, run with Python through `uv` | ~1.1 GB (none if Liquid Agent already has it) |
+| Dictation | Parakeet TDT-CTC 110M (int8 ONNX) through sherpa-onnx, fetched the first time you tap the mic | ~200 MB |
 | Web helper | Betterwright and its browser | ~250 MB |
 
 Files live in `~/Library/Application Support/M1` on macOS and `~/.local/share/m1` on Linux. Settings → Downloads switches model sizes (the old size keeps answering until the new one is ready) and removes any part.
@@ -78,6 +79,7 @@ Files live in `~/Library/Application Support/M1` on macOS and `~/.local/share/m1
 browser ──HTTP/WebSocket──▶ server/ (Node, 127.0.0.1:8270)
                               ├─ llama-server  Brain          :8280  (K2 Horizon 3.7B or your GGUF)
                               ├─ guardian/     Auto 150M      :8776
+                              ├─ dictation/    Parakeet 110M  :8778
                               └─ bridge/       Betterwright   :8777
 ```
 

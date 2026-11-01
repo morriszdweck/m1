@@ -29,6 +29,7 @@ export const DIRS = {
   logs: path.join(DATA, "logs"),
   uploads: path.join(DATA, "uploads"),
   guardian: path.join(DATA, "guardian"),
+  dictation: path.join(DATA, "dictation"),
   bridge: path.join(DATA, "bridge"),
   hf: path.join(DATA, "hf"),
 };

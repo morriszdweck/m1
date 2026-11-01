@@ -37,7 +37,7 @@ const copy = (from, to = from) =>
   fs.cpSync(path.join(ROOT, from), path.join(app, to), { recursive: true, filter: (src) => !skip.has(path.basename(src)) });
 
 try {
-  for (const part of ["server", "guardian", "bridge", "web/dist", "LICENSE", "README.md"]) copy(part);
+  for (const part of ["server", "guardian", "dictation", "bridge", "web/dist", "LICENSE", "README.md"]) copy(part);
 
   // Runtime packages, with whatever they depend on in turn.
   const wanted = [...Object.keys(pkg.dependencies ?? {})];

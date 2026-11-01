@@ -1,26 +1,7 @@
 // Settings, the one-click downloads, and the first-run setup screen.
 
 import { useState } from "react";
-import {
-  Bell,
-  Brain,
-  Check,
-  Cpu,
-  Download,
-  FolderOpen,
-  Globe,
-  Link2,
-  Monitor,
-  Moon,
-  Play,
-  RotateCcw,
-  Shield,
-  SlidersHorizontal,
-  Square,
-  Sun,
-  Trash2,
-  User,
-} from "lucide-react";
+import { Bell, Brain, Check, Cpu, Download, FolderOpen, Globe, Link2, Mic, Monitor, Moon, Play, RotateCcw, Shield, SlidersHorizontal, Square, Sun, Trash2, User } from "lucide-react";
 import { api } from "../api";
 import { errorToast, toast, useStore } from "../store";
 import type { ModelResolution, Part, Settings as SettingsType } from "../types";
@@ -35,6 +16,7 @@ const PART_ICONS: Record<Part["id"], JSX.Element> = {
   engine: <Cpu size={18} />,
   small: <Brain size={18} />,
   guardian: <Shield size={18} />,
+  dictation: <Mic size={18} />,
   browser: <Globe size={18} />,
 };
 
@@ -534,7 +516,7 @@ const SIZES = [
 type SizeId = (typeof SIZES)[number]["id"];
 
 const PLANS = {
-  all: ["engine", "small", "guardian", "browser"],
+  all: ["engine", "small", "guardian", "dictation", "browser"],
   text: ["engine", "small"],
 } as const;
 

@@ -1,10 +1,11 @@
 // The message box: text and text files, the permissions menu, reasoning effort at the
-// right, and the project chin under a new chat.
+// right, dictation through Parakeet 110M, and the project chin under a new chat.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, FileText, Paperclip, ShieldCheck, ShieldQuestion, Square, X, Zap } from "lucide-react";
-import { api, upload } from "../api";
-import { errorToast, go, toast, useStore } from "../store";
+import { ArrowUp, Check, FileText, Mic, Paperclip, ShieldCheck, ShieldQuestion, Square, X, Zap } from "lucide-react";
+import { api, transcribe, upload } from "../api";
+import { Mic as Microphone, wav } from "../audio/capture";
+import { errorToast, go, part, toast, useStore } from "../store";
 import type { ApprovalMode, Attachment, Chat, Part } from "../types";
 import { DEVICE, cx } from "../util";
 import { EffortMenu } from "./EffortMenu";
@@ -49,6 +50,11 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
   });
   const [files, setFiles] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [recording, setRecording] = useState<null | "on" | "busy">(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [level, setLevel] = useState(0);
+  const mic = useRef<{ mic: Microphone; chunks: Int16Array[]; started: number } | null>(null);
+  const dictation = part(parts, "dictation");
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const busy = chat ? running.includes(chat.id) : false;
@@ -75,7 +81,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
     el.style.height = "0px";
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, []);
-  useLayoutEffect(fit, [text, fit]);
+  useLayoutEffect(fit, [text, recording, fit]);
   useEffect(() => {
     const el = area.current?.parentElement;
     if (!el) return;
@@ -88,7 +94,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [fit]);
+  }, [fit, recording]);
 
   useEffect(() => {
     const onFill = (e: Event) => {
@@ -159,7 +165,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
   }, [addFiles]);
 
   const uploading = files.some((f) => !f.uploaded);
-  const canSend = !busy && !uploading && (text.trim().length > 0 || files.length > 0);
+  const canSend = !busy && !uploading && (text.trim().length > 0 || files.length > 0) && recording === null;
 
   async function send() {
     if (!canSend) return;
@@ -181,6 +187,58 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
     }
   }
 
+  async function startDictation() {
+    // Parakeet 110M is a small extra download, fetched the first time the mic is used.
+    if (!dictation || dictation.status === "missing" || dictation.status === "failed") {
+      api("POST", "/api/parts/install", { ids: ["dictation"] }).catch(errorToast);
+      return toast(`Getting dictation ready (${dictation?.size ?? "about 200 MB"}). Tap the mic again once it's done.`);
+    }
+    if (dictation.status === "installing") return toast("Dictation is still downloading. Tap the mic again once it's done.");
+    const chunks: Int16Array[] = [];
+    const m = new Microphone(16000, (f) => {
+      chunks.push(f.pcm);
+      setLevel(f.rms);
+    });
+    try {
+      await m.start();
+    } catch {
+      return toast(`I can't use the microphone. Allow it for M1 in System Settings → Privacy & Security → Microphone, or in your browser's site settings.`, "error");
+    }
+    mic.current = { mic: m, chunks, started: Date.now() };
+    setElapsed(0);
+    setRecording("on");
+  }
+
+  useEffect(() => {
+    if (recording !== "on") return;
+    const t = setInterval(() => setElapsed(Date.now() - (mic.current?.started ?? Date.now())), 200);
+    return () => clearInterval(t);
+  }, [recording]);
+
+  // Leaving the chat mid-dictation lets go of the microphone.
+  useEffect(() => () => mic.current?.mic.stop(), []);
+
+  async function stopDictation(keep: boolean) {
+    const current = mic.current;
+    mic.current = null;
+    current?.mic.stop();
+    if (!keep || !current || current.chunks.length < 10) {
+      setRecording(null);
+      return;
+    }
+    setRecording("busy");
+    try {
+      const said = await transcribe(wav(current.chunks, 16000));
+      if (said) setText((t) => (t.trim() ? `${t.trimEnd()} ${said}` : said));
+      else toast("I didn't catch that. Try again a little closer to the mic.");
+    } catch (e) {
+      errorToast(e);
+    } finally {
+      setRecording(null);
+      area.current?.focus();
+    }
+  }
+
   const mode = MODES.find((m) => m.value === settings?.approvalMode) ?? MODES[0];
 
   return (
@@ -191,7 +249,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
           <div>Drop files to add them</div>
         </div>
       )}
-      <div className="composer">
+      <div className={cx("composer", recording && "recording")}>
         {files.length > 0 && (
           <div className="attachments">
             {files.map((f) => (
@@ -213,6 +271,30 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
           </div>
         )}
 
+        {recording ? (
+          <div className="dictation">
+            <span className="rec-dot" />
+            <span className="rec-time">{recording === "busy" ? "Writing it down…" : `${Math.floor(elapsed / 60000)}:${String(Math.floor(elapsed / 1000) % 60).padStart(2, "0")}`}</span>
+            <div className="rec-level">
+              {Array.from({ length: 28 }, (_, i) => (
+                <span key={i} style={{ height: `${Math.max(3, Math.min(22, level * 400 * (0.5 + Math.abs(Math.sin(i * 1.7 + elapsed / 180)))))}px` }} />
+              ))}
+            </div>
+            {recording === "busy" ? (
+              <Spinner />
+            ) : (
+              <>
+                <button className="round-btn ghost" onClick={() => stopDictation(false)} aria-label="Cancel dictation">
+                  <X size={16} />
+                </button>
+                <button className="round-btn primary" onClick={() => stopDictation(true)} aria-label="Finish dictation">
+                  <Check size={16} />
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
           <textarea
             ref={area}
             value={text}
@@ -278,6 +360,14 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
             />
             <div className="composer-spacer" />
             <EffortMenu />
+            <button
+              className="round-btn ghost"
+              onClick={startDictation}
+              aria-label="Dictate"
+              title={dictation?.status === "installing" ? "Dictation is downloading…" : "Dictate"}
+            >
+              {dictation?.status === "installing" ? <Spinner size={14} /> : <Mic size={17} />}
+            </button>
             {busy ? (
               <button className="round-btn primary" onClick={() => api("POST", `/api/chats/${chat!.id}/stop`).catch(errorToast)} aria-label="Stop" title="Stop">
                 <Square size={13} fill="currentColor" />
@@ -288,6 +378,8 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
               </button>
             )}
           </div>
+          </>
+        )}
       </div>
       {!chat && <ProjectPicker />}
     </div>

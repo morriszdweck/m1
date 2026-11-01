@@ -48,7 +48,7 @@ export type Chat = {
 
 export type PartStatus = "missing" | "installing" | "installed" | "starting" | "running" | "failed";
 export type Part = {
-  id: "engine" | "small" | "guardian" | "browser";
+  id: "engine" | "small" | "guardian" | "dictation" | "browser";
   title: string;
   detail: string;
   size: string;

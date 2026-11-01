@@ -168,9 +168,12 @@ app.whenReady().then(() => {
       { role: "help", submenu: [{ label: "M1 Website", click: () => shell.openExternal("https://m1.mincoffical.codes") }] },
     ]),
   );
-  // Notifications and the clipboard, for M1's own page only.
-  const allowed = new Set(["notifications", "clipboard-read", "clipboard-sanitized-write", "fullscreen"]);
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => callback(allowed.has(permission) && isLocal(details.requestingUrl)));
+  // The microphone (for dictation, never the camera), notifications and the clipboard, for M1's own page only.
+  const allowed = new Set(["media", "notifications", "clipboard-read", "clipboard-sanitized-write", "fullscreen"]);
+  const micOnly = (permission, details) => permission !== "media" || (details.mediaTypes ?? []).every((t) => t === "audio");
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) =>
+    callback(allowed.has(permission) && micOnly(permission, details) && isLocal(details.requestingUrl)),
+  );
   session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => allowed.has(permission) && isLocal(origin));
   open();
 });

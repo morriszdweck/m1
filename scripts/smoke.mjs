@@ -187,7 +187,7 @@ check(foreign.status === 401, "the API refuses other websites");
 const state = await call("GET", "/api/state");
 check(state.machine.os === process.platform, `it knows this is ${process.platform} (engine build: ${state.machine.gpu})`);
 const ids = state.parts.map((p) => p.id);
-check(["engine", "small", "guardian", "browser"].every((id) => ids.includes(id)), "every part is listed");
+check(["engine", "small", "guardian", "dictation", "browser"].every((id) => ids.includes(id)), "every part is listed");
 check(state.dataDir === home, "it keeps its files in the data folder it was given");
 check(state.routines.length > 0, "starter routines are there");
 

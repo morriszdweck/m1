@@ -8,7 +8,7 @@ import path from "node:path";
 import { WebSocketServer } from "ws";
 import { DATA, ROOT, bus, flushAll, settings, updateSettings } from "./core.js";
 import { openPath, reveal } from "./platform.js";
-import { backends } from "./backends.js";
+import { PARTS, backends } from "./backends.js";
 import { agent } from "./agent.js";
 import { memory } from "./memory.js";
 import { routineStore } from "./routines.js";
@@ -173,6 +173,23 @@ route("POST", "/api/uploads", async (req) => {
   } catch (e) {
     throw new HttpError(415, e instanceof NotText ? e.message : "I couldn't read that file.");
   }
+});
+
+// Dictation: Parakeet 110M turns a WAV from the microphone into text.
+route("POST", "/api/transcribe", async (req) => {
+  const wav = await body(req, MAX_UPLOAD);
+  if (!backends.installed("dictation")) throw new HttpError(503, "Dictation isn't set up yet.");
+  if (!backends.running("dictation")) await backends.start("dictation");
+  if (!backends.running("dictation")) throw new HttpError(503, "Dictation didn't start. Try again from Settings → Downloads.");
+  const res = await fetch(`http://127.0.0.1:${PARTS.dictation.port}/transcribe`, {
+    method: "POST",
+    headers: { "Content-Type": "audio/wav" },
+    body: wav,
+    signal: AbortSignal.timeout(120_000),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new HttpError(400, out.error ?? "I couldn't hear that.");
+  return { text: String(out.text ?? "").trim() };
 });
 
 route("GET", "/api/settings", () => settings);

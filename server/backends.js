@@ -29,6 +29,13 @@ export const PARTS = {
     bytes: 1.1e9,
     port: 8776,
   },
+  dictation: {
+    title: "Dictation",
+    detail: "Parakeet 110M. Turns what you say into text, on this computer.",
+    size: "about 200 MB",
+    bytes: 0.2e9,
+    port: 8778,
+  },
   browser: {
     title: "Web helper",
     detail: "Betterwright. Lets the agent click around websites for you.",
@@ -37,7 +44,7 @@ export const PARTS = {
     port: 8777,
   },
 };
-export const ORDER = ["engine", "small", "guardian", "browser"];
+export const ORDER = ["engine", "small", "guardian", "dictation", "browser"];
 
 // Each model comes in several sizes (quants); settings pick which one is used.
 const GGUF = {
@@ -94,6 +101,7 @@ const marker = (dir) => path.join(dir, ".ready");
 /** The safety helper's marker holds this name, so a copy set up with an older model fetches this one. */
 const GUARDIAN_MODEL = "ProCreations/auto-150m-3";
 const OLD_GUARDIANS = ["ProCreations/auto-200m-2-int4"];
+const DICTATION_MODEL = "sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000-int8";
 const ownGuardian = () => fs.existsSync(marker(DIRS.guardian)) && fs.readFileSync(marker(DIRS.guardian), "utf8").trim() === GUARDIAN_MODEL;
 
 // Liquid Agent runs the same safety model. When it already has it, M1 uses that copy
@@ -356,6 +364,8 @@ class Backends {
         return fs.existsSync(weights("small"));
       case "guardian":
         return guardianOnDisk();
+      case "dictation":
+        return fs.existsSync(marker(DIRS.dictation)) && fs.readFileSync(marker(DIRS.dictation), "utf8").trim() === DICTATION_MODEL;
       case "browser":
         return fs.existsSync(marker(DIRS.bridge));
     }
@@ -575,6 +585,8 @@ class Backends {
         });
       case "guardian":
         return this.installGuardian(signal);
+      case "dictation":
+        return this.installDictation(signal);
       case "browser":
         return this.installBrowser(signal);
     }
@@ -691,14 +703,14 @@ class Backends {
     };
   }
 
-  async ensureUV(signal) {
+  async ensureUV(signal, id = "guardian") {
     const uv = path.join(DIRS.tools, "uv", "uv");
     if (fs.existsSync(uv)) return uv;
     const triple = `${ARCH === "arm64" ? "aarch64" : "x86_64"}-${process.platform === "darwin" ? "apple-darwin" : "unknown-linux-gnu"}`;
     const archive = path.join(DIRS.tools, "uv.tar.gz");
     await download(`https://github.com/astral-sh/uv/releases/latest/download/uv-${triple}.tar.gz`, archive, {
       signal,
-      onProgress: this.progress("guardian", "Getting Python tools"),
+      onProgress: this.progress(id, "Getting Python tools"),
     });
     fs.mkdirSync(path.dirname(uv), { recursive: true });
     await run("tar", ["-xzf", archive, "-C", path.dirname(uv), "--strip-components=1"], { signal });
@@ -729,6 +741,38 @@ class Backends {
     });
     fs.writeFileSync(marker(DIRS.guardian), GUARDIAN_MODEL);
     for (const old of OLD_GUARDIANS) fs.rmSync(path.join(DIRS.hf, "hub", `models--${old.replace("/", "--")}`), { recursive: true, force: true });
+  }
+
+  async installDictation(signal) {
+    const uv = await this.ensureUV(signal, "dictation");
+    const venv = path.join(DIRS.dictation, ".venv");
+    const env = this.pythonEnv;
+    this.set("dictation", { status: "installing", text: "Setting up a private Python…" });
+    await run(uv, ["venv", "--allow-existing", "--python", "3.12", venv], { env, signal });
+    this.set("dictation", { status: "installing", text: "Installing the speech tools…" });
+    await run(uv, ["pip", "install", "--python", path.join(venv, "bin", "python"), "-r", path.join(ROOT, "dictation", "requirements.txt")], {
+      env,
+      signal,
+      timeout: 900_000,
+    });
+    const archive = path.join(DIRS.dictation, "model.tar.bz2");
+    await download(`https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${DICTATION_MODEL}.tar.bz2`, archive, {
+      signal,
+      onProgress: this.progress("dictation", "Downloading Parakeet 110M"),
+    });
+    this.set("dictation", { status: "installing", text: "Unpacking Parakeet 110M…" });
+    const dir = path.join(DIRS.dictation, "model");
+    const unpacked = path.join(DIRS.dictation, "unpacked");
+    for (const d of [dir, unpacked]) {
+      fs.rmSync(d, { recursive: true, force: true });
+      fs.mkdirSync(d, { recursive: true });
+    }
+    await run("tar", ["-xjf", archive, "-C", unpacked], { signal });
+    // Keep only the model and its tokens; the archive's sample recordings go.
+    for (const file of ["model.int8.onnx", "tokens.txt"]) fs.renameSync(path.join(unpacked, DICTATION_MODEL, file), path.join(dir, file));
+    fs.rmSync(unpacked, { recursive: true, force: true });
+    fs.rmSync(archive, { force: true });
+    fs.writeFileSync(marker(DIRS.dictation), DICTATION_MODEL);
   }
 
   get nodeEnv() {
@@ -769,6 +813,10 @@ class Backends {
       case "guardian":
         fs.rmSync(DIRS.guardian, { recursive: true, force: true });
         fs.mkdirSync(DIRS.guardian, { recursive: true });
+        break;
+      case "dictation":
+        fs.rmSync(DIRS.dictation, { recursive: true, force: true });
+        fs.mkdirSync(DIRS.dictation, { recursive: true });
         break;
       case "browser":
         fs.rmSync(DIRS.bridge, { recursive: true, force: true });
@@ -840,6 +888,12 @@ class Backends {
           env: { ...this.pythonEnv, ...(shared ? { HF_HOME: shared.hf } : {}), HF_HUB_OFFLINE: "1" },
         };
       }
+      case "dictation":
+        return {
+          cmd: path.join(DIRS.dictation, ".venv", "bin", "python"),
+          args: ["-I", path.join(ROOT, "dictation", "server.py"), "--model", path.join(DIRS.dictation, "model"), "--port", port],
+          cwd: DIRS.dictation,
+        };
       case "browser":
         return {
           cmd: process.execPath,

@@ -28,6 +28,7 @@
       "hardenedRuntime": false,
       "darkModeSupport": true,
       "extendInfo": {
+        "NSMicrophoneUsageDescription": "M1 listens only while you dictate a message.",
         "NSAppleEventsUsageDescription": "M1 can control other apps when you ask it to."
       }
     },
