@@ -99,8 +99,6 @@ export type ModelResolution = {
 
 export type ApprovalMode = "askAlways" | "approveForMe" | "fullAuto";
 
-/** How long K2 Horizon thinks before it answers. */
-export type ReasoningEffort = "low" | "medium" | "high";
 
 export type Settings = {
   userName: string;
@@ -114,7 +112,7 @@ export type Settings = {
   toolOutputLimit: number;
   maxSteps: number;
   temperature: number;
-  reasoningEffort: ReasoningEffort;
+  thinking: boolean;
   smallQuant: string;
   smallURL: string;
   guardianURL: string;

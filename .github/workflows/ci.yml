@@ -124,7 +124,7 @@ jobs:
         run: cat "$HOME/.local/share/m1/logs/"*.log || true
 
   models:
-    name: K2 Horizon 3.7B answers on ${{ matrix.os }} (CPU)
+    name: Bonsai 2 9B answers on ${{ matrix.os }} (CPU)
     strategy:
       fail-fast: false
       matrix:
@@ -137,7 +137,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci && npm run build
-      - name: Download the engine and the smallest K2 Horizon 3.7B, chat and run a tool
+      - name: Download the engine and Bonsai 2 9B, chat and run a tool
         run: node scripts/smoke.mjs --models
         timeout-minutes: 40
 

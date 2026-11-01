@@ -15,10 +15,10 @@ import { activeTools, runTool, toolMap } from "./tools.js";
 import { uploads } from "./uploads.js";
 
 const uid = () => crypto.randomUUID();
-// K2 Horizon runs one tool per step: stop as soon as its call closes.
-const STOPS = ["</ifm|tool_call>", "</ifm|tool_calls>", "</tool_call>"];
-/** How much K2 Horizon may write per step at each reasoning effort, thinking included. */
-const STEP_TOKENS = { low: 2048, medium: 4096, high: 8192 };
+// Bonsai runs one tool per step: stop as soon as its call closes.
+const STOPS = ["</tool_call>"];
+/** How much Bonsai may write per step, thinking included. Thinking can take thousands of tokens. */
+const STEP_TOKENS = { thinking: 12288, quick: 2048 };
 const OPEN = ["pending", "checking", "approval", "running"];
 
 // Small models reach for tools on plain asks ("make a table", "explain X") and
@@ -220,9 +220,9 @@ export const agent = {
         let last = 0;
         const thinkStart = Date.now();
         let thinkEnd = 0;
-        // The reasoning effort slider: K2 Horizon thinks long (high), shorter (medium) or briefly (low).
-        const effort = ["low", "medium", "high"].includes(settings.reasoningEffort) ? settings.reasoningEffort : "high";
-        const maxTokens = Math.max(256, Math.min(STEP_TOKENS[effort], context - budget));
+        // The Thinking toggle: Bonsai reasons before it answers, or answers straight away.
+        const thinking = settings.thinking !== false;
+        const maxTokens = Math.max(256, Math.min(STEP_TOKENS[thinking ? "thinking" : "quick"], context - budget));
         for await (const part of stream({
           url: model.url(),
           model: model.id,
@@ -230,7 +230,7 @@ export const agent = {
           temperature: model.temperature(),
           maxTokens,
           stop: STOPS,
-          effort,
+          thinking,
           signal,
         })) {
           if (part.content) {
@@ -262,7 +262,7 @@ export const agent = {
         live = "";
         if (!call) {
           reply.content =
-            text || (inline.done ? "I couldn't come up with a reply. Try asking another way." : "I ran out of room while thinking. Try a lower reasoning effort, or ask a smaller question.");
+            text || (inline.done ? "I couldn't come up with a reply. Try asking another way." : "I ran out of room while thinking. Turn off Thinking, or ask a smaller question.");
           break;
         }
         if (final) {
@@ -393,7 +393,7 @@ export const agent = {
       model: MODELS.small.id,
       temperature: 0.3,
       maxTokens: 400,
-      // A system prompt about "naming chats" makes K2 Horizon answer "ChatGPT", so it gets
+      // A system prompt about "naming chats" can make a small model answer "ChatGPT", so it gets
       // one plain request with examples instead.
       messages: [
         {

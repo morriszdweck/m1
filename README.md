@@ -1,10 +1,10 @@
 # M1
 
-A private AI agent for your Mac or Linux computer that runs **K2 Horizon 3.7B** entirely on your computer, with a clean web interface in your browser.
+A private AI agent for your Mac or Linux computer that runs **Bonsai 2 9B** entirely on your computer, with a clean web interface in your browser.
 
 - **Chat** with full Markdown: tables, code with highlighting and copy buttons, math, task lists.
 - **Does things on your computer**: runs commands, reads and writes files, searches and reads the web, opens apps and links, sets reminders, uses the clipboard, and clicks around websites with [Betterwright](https://www.npmjs.com/package/betterwright).
-- **Thinks first, as much as you want**: K2 Horizon 3.7B reasons before it answers. The **reasoning effort** slider under the message box picks Low (quick), Medium or High (thinks as long as it needs). The reasoning stays folded away; tap it to read it.
+- **Thinks first, when you want it to**: with **Thinking** on (the switch beside the message box), Bonsai 2 9B reasons before it answers. Turn it off for quick replies. The reasoning stays folded away; tap it to read it.
 - **Text in, text out**: attach text files and documents (PDF, Word, code, CSV and more). No voice or pictures.
 - **Three safety modes**: *Ask for Approval*, *Approve for Me* and *Full Auto*. Approve for Me needs the [Auto 150M](https://huggingface.co/ProCreations/auto-150m-3) classifier, which approves safe actions and asks you about the rest; picking it downloads Auto 150M first. Commands that could wipe data always ask.
 - **Choose project**: the button under the message box ties a chat to one folder. The agent then works only there: file tools refuse paths outside it, and shell commands run in a sandbox that can write only inside the folder and can't read the rest of your home folder (`sandbox-exec` on macOS, [bubblewrap](https://github.com/containers/bubblewrap) on Linux; without bubblewrap, commands that name a path outside the folder are refused and every command asks you first). Recent projects are one click away.
@@ -64,26 +64,26 @@ sudo apt install wl-clipboard xclip libnotify-bin pandoc
 | Part | What it is | Size |
 | --- | --- | --- |
 | AI engine | [llama.cpp](https://github.com/ggml-org/llama.cpp) server, latest release | ~30 MB |
-| Brain | [K2 Horizon 3.7B](https://huggingface.co/IFM/K2-Horizon-3.7B-GGUF) (GGUF, Q4_K_M to BF16; Q5_K_M by default) | 2.5–7.5 GB |
+| Brain | [Bonsai 2 9B](https://huggingface.co/prism-ml/Ternary-Bonsai-2-9B-gguf) by PrismML (ternary GGUF, Q2_0) | 2.6 GB |
 | Safety helper | Auto 150M, run with Python through `uv` | ~1.1 GB (none if Liquid Agent already has it) |
 | Dictation | Parakeet TDT-CTC 110M (int8 ONNX) through sherpa-onnx, fetched the first time you tap the mic | ~200 MB |
 | Web helper | Betterwright and its browser | ~250 MB |
 
 Files live in `~/Library/Application Support/M1` on macOS and `~/.local/share/m1` on Linux. Settings → Downloads switches model sizes (the old size keeps answering until the new one is ready) and removes any part.
 
-**Advanced: your own model.** Settings → Advanced → Brain model → **Use a model from Hugging Face** takes a link such as `https://huggingface.co/<org>/<model>-GGUF`. M1 reads the repository's GGUF list, groups split files, picks a size that should fit this computer, checks the GGUF header and chat template, and runs it on the same llama.cpp engine. A `blob` link to one `.gguf` file preselects that file. Public repositories work directly; for a gated or private one, accept its terms on Hugging Face and set `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`) before starting M1. Only text GGUF models are used here. Switch back to the built-in K2 Horizon 3.7B at any time. A model you add hasn't been tested with M1's tools, so while it answers, Full Auto works like Approve for Me and Auto 150M checks each action.
+**Advanced: your own model.** Settings → Advanced → Brain model → **Use a model from Hugging Face** takes a link such as `https://huggingface.co/<org>/<model>-GGUF`. M1 reads the repository's GGUF list, groups split files, picks a size that should fit this computer, checks the GGUF header and chat template, and runs it on the same llama.cpp engine. A `blob` link to one `.gguf` file preselects that file. Public repositories work directly; for a gated or private one, accept its terms on Hugging Face and set `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`) before starting M1. Only text GGUF models are used here. Switch back to the built-in Bonsai 2 9B at any time. A model you add hasn't been tested with M1's tools, so while it answers, Full Auto works like Approve for Me and Auto 150M checks each action.
 
 ## How it works
 
 ```
 browser ──HTTP/WebSocket──▶ server/ (Node, 127.0.0.1:8270)
-                              ├─ llama-server  Brain          :8280  (K2 Horizon 3.7B or your GGUF)
+                              ├─ llama-server  Brain          :8280  (Bonsai 2 9B or your GGUF)
                               ├─ guardian/     Auto 150M      :8776
                               ├─ dictation/    Parakeet 110M  :8778
                               └─ bridge/       Betterwright   :8777
 ```
 
-- `server/agent.js` runs the agent loop. K2 Horizon writes tool calls in its native `<ifm|tool_call>` format and its thinking in `<ifm|think>` tags (`server/think.js`); the reasoning effort goes to its chat template; `server/toolparser.js` reads that and the other common forms.
+- `server/agent.js` runs the agent loop. Bonsai writes tool calls in its native `<tool_call><function=…>` format and its thinking in `<think>` tags (`server/think.js`); the Thinking switch goes to its chat template as `enable_thinking`; `server/toolparser.js` reads that and the other common forms.
 - `server/models.js` reads Hugging Face links, finds and groups GGUF files, picks a size for this computer and checks a model's header before it runs.
 - `server/prompt.js` keeps prompts small: a short system prompt, only relevant memories, and older tool results trimmed to fit the context budget.
 - `web/` is a React app built with Vite into `web/dist`, which the server hosts.

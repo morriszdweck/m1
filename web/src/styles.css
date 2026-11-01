@@ -2970,59 +2970,14 @@ input[type="range"] {
   }
 }
 
-/* Reasoning effort: a button at the right of the message box opens this slider. */
-.effort-pop {
-  padding: 8px 10px 10px;
+/* Thinking: a switch at the right of the message box. Blue while it's on. */
+.think-btn {
+  gap: 5px;
 }
-.effort-head {
-  margin-bottom: 10px;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--fg);
+.think-btn.on {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
-.effort-head > span {
-  color: var(--fg-3);
-}
-.effort-track {
-  position: relative;
-  height: 38px;
-  border-radius: 10px;
-  background: var(--hover-strong);
-  cursor: pointer;
-  touch-action: none;
-  outline: none;
-}
-.effort-track:focus-visible {
-  box-shadow: 0 0 0 2px var(--accent);
-}
-.effort-tick,
-.effort-thumb {
-  position: absolute;
-  top: 50%;
-  translate: -50% -50%;
-}
-.effort-tick {
-  width: 4px;
-  height: 16px;
-  border-radius: 2px;
-  background: var(--fg-3);
-  opacity: 0.45;
-}
-.effort-tick.hidden {
-  visibility: hidden;
-}
-.effort-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 10px;
-  background: var(--accent);
-  transition: width 0.18s ease;
-}
-.effort-thumb {
-  width: 5px;
-  height: 18px;
-  border-radius: 3px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  transition: left 0.18s ease;
+.think-btn.on:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }

@@ -95,8 +95,8 @@ export const DEFAULTS = {
   toolOutputLimit: 1200,
   maxSteps: 8,
   temperature: 1.0,
-  reasoningEffort: "high",
-  smallQuant: "Q5_K_M",
+  thinking: true,
+  smallQuant: "Q2_0",
   smallURL: "http://127.0.0.1:8280/v1",
   guardianURL: "http://127.0.0.1:8776",
   browserURL: "http://127.0.0.1:8777",
@@ -105,13 +105,7 @@ export const DEFAULTS = {
 const URL_KEYS = new Set(["smallURL", "guardianURL", "browserURL"]);
 /** Download sizes offered for each model, smallest first. Sizes are bytes on Hugging Face. */
 export const QUANTS = {
-  small: [
-    { id: "Q4_K_M", label: "Smallest", bytes: 3.16e9 },
-    { id: "Q5_K_M", label: "Balanced", bytes: 3.64e9, note: "Recommended" },
-    { id: "Q6_K", label: "Sharper", bytes: 4.16e9 },
-    { id: "Q8_0", label: "Best", bytes: 5.39e9, note: "Near full quality" },
-    { id: "BF16", label: "Full quality", bytes: 10.13e9, note: "Slowest, needs the most memory" },
-  ],
+  small: [{ id: "Q2_0", label: "Ternary", bytes: 2.56e9, note: "Recommended" }],
 };
 
 const CHOICES = {
@@ -119,7 +113,6 @@ const CHOICES = {
   personality: Object.keys(PERSONALITIES),
   approvalMode: ["askAlways", "approveForMe", "fullAuto"],
   theme: ["system", "light", "dark"],
-  reasoningEffort: ["low", "medium", "high"],
 };
 
 const saved = load("settings.json", {});
@@ -153,7 +146,7 @@ export function isLocal(url) {
 }
 
 export const MODELS = {
-  small: { id: "K2-Horizon-3.7B", label: "K2 Horizon 3.7B", url: () => settings.smallURL, temperature: () => settings.temperature },
+  small: { id: "Bonsai-2-9B", label: "Bonsai 2 9B", url: () => settings.smallURL, temperature: () => settings.temperature },
 };
 
 // ---- Event bus (server -> every open tab) ----

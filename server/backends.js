@@ -18,8 +18,8 @@ export const PARTS = {
   },
   small: {
     title: "Brain",
-    detail: "K2 Horizon 3.7B. Thinks step by step, writes and takes actions.",
-    size: "3.6 GB",
+    detail: "Bonsai 2 9B. Thinks things through when you want it to, writes and takes actions.",
+    size: "2.6 GB",
     port: 8280,
   },
   guardian: {
@@ -48,11 +48,25 @@ export const ORDER = ["engine", "small", "guardian", "dictation", "browser"];
 
 // Each model comes in several sizes (quants); settings pick which one is used.
 const GGUF = {
-  small: { repo: "IFM/K2-Horizon-3.7B-GGUF", prefix: "K2-Horizon-4B-" },
+  small: { repo: "prism-ml/Ternary-Bonsai-2-9B-gguf", prefix: "Ternary-Bonsai-2-9B-" },
 };
 const quantOf = (id) => QUANTS[id].find((q) => q.id === settings[`${id}Quant`]) ?? QUANTS[id].find((q) => q.note) ?? QUANTS[id][0];
 const weightsFile = (id) => `${GGUF[id].prefix}${quantOf(id).id}.gguf`;
 const CUSTOM_FILE = "custom-model.json";
+
+/** M1 used to run K2 Horizon 3.7B. Deletes its weights (2.5 to 10 GB) and says whether there were any. */
+function dropOldBrain() {
+  let found = false;
+  try {
+    for (const name of fs.readdirSync(DIRS.models)) {
+      if (name.startsWith("K2-Horizon-")) {
+        fs.rmSync(path.join(DIRS.models, name), { force: true });
+        found = true;
+      }
+    }
+  } catch {}
+  return found;
+}
 const CUSTOM_DIR = path.join(DIRS.models, "custom");
 
 const ARCH = process.arch === "arm64" ? "arm64" : "x64";
@@ -267,10 +281,13 @@ class Backends {
   custom = cleanCustom(load(CUSTOM_FILE, null));
 
   constructor() {
+    const replaced = dropOldBrain();
     this.refresh();
     for (const id of ORDER) if (this.states[id].status === "installing") this.states[id] = { status: "missing" };
     const saved = load("downloads.json", {});
     this.unfinished = Array.isArray(saved.pending) ? saved.pending.filter((id) => ORDER.includes(id)) : [];
+    // Someone who had the old brain gets the new one without asking.
+    if (replaced && !this.custom && !this.installed("small") && !this.unfinished.includes("small")) this.unfinished.push("small");
     this.guardianWanted = saved.approveForMe === true;
   }
 
@@ -472,7 +489,7 @@ class Backends {
     return this.snapshot().find((p) => p.id === "small");
   }
 
-  /** Goes back to the built-in K2 Horizon 3.7B and deletes the custom download. */
+  /** Goes back to the built-in Bonsai 2 9B and deletes the custom download. */
   clearCustomModel() {
     if (this.busy) throw modelError("Wait for the current download to finish, then switch back.", 409);
     if (!this.custom) return this.snapshot().find((p) => p.id === "small");
@@ -871,12 +888,12 @@ class Backends {
         const variant = variantOf(custom);
         if (custom && !variant) return null;
         const context = this.contextTokens(id);
-        // One slot, so a chat gets the whole context. K2 Horizon's thinking comes back
-        // raw (--reasoning-format none): M1 reads its <ifm|think…> tags itself.
+        // One slot, so a chat gets the whole context. Bonsai's thinking comes back
+        // raw (--reasoning-format none): M1 reads its <think> tags itself.
         const args = ["--host", "127.0.0.1", "--port", port, "-c", String(context), "-np", "1", "-ngl", "99", "--reasoning-format", "none"];
         if (custom?.meta?.hasTemplate !== false) args.push("--jinja");
         if (this.cpuOnly) args.push("--device", "none");
-        args.push("-m", custom ? customPath(variant.file) : weights("small"), "--alias", "K2-Horizon-3.7B");
+        args.push("-m", custom ? customPath(variant.file) : weights("small"), "--alias", "Bonsai-2-9B");
         return { cmd: server, args };
       }
       case "guardian": {

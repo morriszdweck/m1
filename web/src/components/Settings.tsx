@@ -244,7 +244,7 @@ export function PartRow({ part }: { part: Part }) {
           {part.title} <span className="muted small">· {part.size}</span>
         </div>
         <div className="part-detail">{part.detail}</div>
-        {part.quants && (
+        {part.quants && part.quants.length > 1 && (
           <label className="part-size">
             <span>Size</span>
             <select
@@ -508,13 +508,6 @@ function Advanced({ settings }: { settings: SettingsType }) {
 
 // ---- First run ----
 
-const SIZES = [
-  { id: "small", label: "Smaller", detail: "Fastest, least space", small: "Q4_K_M" },
-  { id: "balanced", label: "Balanced", detail: "Good answers, quick", small: "Q5_K_M" },
-  { id: "best", label: "Best", detail: "Best answers, needs more memory", small: "Q8_0" },
-] as const;
-type SizeId = (typeof SIZES)[number]["id"];
-
 const PLANS = {
   all: ["engine", "small", "guardian", "dictation", "browser"],
   text: ["engine", "small"],
@@ -522,32 +515,25 @@ const PLANS = {
 
 const gbText = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;
 
-/** Bytes a plan downloads with a given size, from what the server says each part weighs. */
-function planBytes(parts: Part[], ids: readonly Part["id"][], size: (typeof SIZES)[number]) {
+/** Bytes a plan downloads, from what the server says each part weighs. */
+function planBytes(parts: Part[], ids: readonly Part["id"][]) {
   return ids.reduce((sum, id) => {
     const p = parts.find((x) => x.id === id);
     if (!p || p.status === "installed" || p.status === "running") return sum;
-    if (!p.quants) return sum + p.bytes;
-    const current = p.quants.find((q) => q.id === p.quant);
-    const chosen = p.quants.find((q) => q.id === size.small);
-    return sum + (chosen?.bytes ?? 0) + (p.bytes - (current?.bytes ?? 0));
+    return sum + p.bytes;
   }, 0);
 }
 
 export function Setup() {
-  const { parts, busy, settings, machine } = useStore();
-  const memoryGB = machine.memoryGB;
-  const suggested: SizeId = memoryGB >= 24 ? "best" : memoryGB > 0 && memoryGB < 12 ? "small" : "balanced";
+  const { parts, busy, settings } = useStore();
   const [plan, setPlan] = useState<keyof typeof PLANS>("all");
-  const [sizeId, setSizeId] = useState<SizeId>(suggested);
   const [name, setName] = useState(settings?.userName ?? "");
-  const size = SIZES.find((x) => x.id === sizeId)!;
   const installing = busy || parts.some((p) => p.status === "installing");
   const failed = parts.filter((p) => p.status === "failed");
 
   const go = async () => {
     try {
-      await api("PATCH", "/api/settings", { userName: name.trim(), smallQuant: size.small });
+      await api("PATCH", "/api/settings", { userName: name.trim() });
       await api("POST", "/api/parts/install", { ids: PLANS[plan] });
       // Approve for Me turns itself on once Auto 150M is ready.
       if (plan === "all") await api("PATCH", "/api/settings", { approvalMode: "approveForMe" });
@@ -620,7 +606,7 @@ export function Setup() {
               <strong>Everything</strong>
               <span className="pill pill-accent">Recommended</span>
             </span>
-            <span className="plan-size">About {gbText(planBytes(parts, PLANS.all, size))}</span>
+            <span className="plan-size">About {gbText(planBytes(parts, PLANS.all))}</span>
             <ul>
               <li>Chat, writing and actions on your {DEVICE}</li>
               <li>Thinks things through before it answers</li>
@@ -632,30 +618,12 @@ export function Setup() {
             <span className="plan-head">
               <strong>Just chat</strong>
             </span>
-            <span className="plan-size">About {gbText(planBytes(parts, PLANS.text, size))}</span>
+            <span className="plan-size">About {gbText(planBytes(parts, PLANS.text))}</span>
             <ul>
               <li>Chat, writing and actions on your {DEVICE}</li>
               <li>Add the safety and web helpers later in Settings</li>
             </ul>
           </button>
-        </div>
-        <div className="size-pick">
-          <div className="size-pick-head">
-            <span>Model size</span>
-            {memoryGB > 0 && <span className="muted small">This {DEVICE} has {memoryGB} GB of memory</span>}
-          </div>
-          <div className="size-options">
-            {SIZES.map((x) => (
-              <button key={x.id} className={cx("size-option", sizeId === x.id && "selected")} onClick={() => setSizeId(x.id)}>
-                <span className="size-label">
-                  {x.label}
-                  {x.id === suggested && <span className="pill pill-accent">For this {DEVICE}</span>}
-                </span>
-                <span className="size-detail">{x.detail}</span>
-              </button>
-            ))}
-          </div>
-          <span className="muted small">You can change this later in Settings → Downloads.</span>
         </div>
         <button className="btn primary big wide" onClick={go}>
           <Download size={17} /> Download and set up

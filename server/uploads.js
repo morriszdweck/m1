@@ -1,5 +1,5 @@
 // Files the user attaches. M1 reads text: plain text and code, and documents it can turn into text.
-// Pictures and audio are turned away, since K2 Horizon only reads text.
+// Pictures and audio are turned away, since M1 only reads text.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
