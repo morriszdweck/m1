@@ -42,7 +42,8 @@ let token = "";
 
 function finish(code) {
   server.kill("SIGTERM");
-  fs.rmSync(home, { recursive: true, force: true });
+  // The server may still be writing as it shuts down, so a leftover temp folder is not a failure.
+  try { fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch {}
   process.exit(code);
 }
 
