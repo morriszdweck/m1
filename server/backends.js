@@ -94,7 +94,29 @@ const marker = (dir) => path.join(dir, ".ready");
 /** The safety helper's marker holds this name, so a copy set up with an older model fetches this one. */
 const GUARDIAN_MODEL = "ProCreations/auto-150m-3";
 const OLD_GUARDIANS = ["ProCreations/auto-200m-2-int4"];
-const guardianOnDisk = () => fs.existsSync(marker(DIRS.guardian)) && fs.readFileSync(marker(DIRS.guardian), "utf8").trim() === GUARDIAN_MODEL;
+const ownGuardian = () => fs.existsSync(marker(DIRS.guardian)) && fs.readFileSync(marker(DIRS.guardian), "utf8").trim() === GUARDIAN_MODEL;
+
+// Liquid Agent runs the same safety model. When it already has it, M1 uses that copy
+// instead of downloading another gigabyte. M1 only reads it and never removes it.
+const LA_DATA =
+  process.env.LIQUID_AGENT_HOME ??
+  (IS_MAC
+    ? path.join(os.homedir(), "Library", "Application Support", "LiquidAgent")
+    : path.join(process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share"), "liquid-agent"));
+const sharedGuardian = () => {
+  const dir = path.join(LA_DATA, "guardian");
+  const python = path.join(dir, ".venv", "bin", "python");
+  const hf = path.join(LA_DATA, "hf");
+  try {
+    if (fs.readFileSync(marker(dir), "utf8").trim() !== GUARDIAN_MODEL) return null;
+  } catch {
+    return null;
+  }
+  if (!fs.existsSync(python)) return null;
+  if (!fs.existsSync(path.join(hf, "hub", "models--" + GUARDIAN_MODEL.replace("/", "--")))) return null;
+  return { dir, python, hf };
+};
+const guardianOnDisk = () => ownGuardian() || sharedGuardian() !== null;
 
 const isGguf = (name) => typeof name === "string" && /\.gguf$/i.test(name) && name.split("/").every((part) => part && part !== "." && part !== "..");
 const customPath = (name) => {
@@ -346,7 +368,7 @@ class Backends {
 
   /** Set up with an older safety model; getting it again moves it to the current one. */
   get guardianOutdated() {
-    return fs.existsSync(marker(DIRS.guardian)) && !guardianOnDisk();
+    return fs.existsSync(marker(DIRS.guardian)) && !ownGuardian() && !sharedGuardian();
   }
 
   /** Ready to answer. A model keeps answering with its old size while a new size downloads. */
@@ -685,6 +707,7 @@ class Backends {
   }
 
   async installGuardian(signal) {
+    if (sharedGuardian()) return; // Liquid Agent's copy is used as is.
     const uv = await this.ensureUV(signal);
     const venv = path.join(DIRS.guardian, ".venv");
     const env = this.pythonEnv;
@@ -808,13 +831,15 @@ class Backends {
         args.push("-m", custom ? customPath(variant.file) : weights("small"), "--alias", "K2-Horizon-3.7B");
         return { cmd: server, args };
       }
-      case "guardian":
+      case "guardian": {
+        const shared = ownGuardian() ? null : sharedGuardian();
         return {
-          cmd: path.join(DIRS.guardian, ".venv", "bin", "python"),
+          cmd: shared ? shared.python : path.join(DIRS.guardian, ".venv", "bin", "python"),
           args: ["-I", path.join(ROOT, "guardian", "server.py"), "--repo", GUARDIAN_MODEL, "--port", port],
           cwd: DIRS.guardian,
-          env: { ...this.pythonEnv, HF_HUB_OFFLINE: "1" },
+          env: { ...this.pythonEnv, ...(shared ? { HF_HOME: shared.hf } : {}), HF_HUB_OFFLINE: "1" },
         };
+      }
       case "browser":
         return {
           cmd: process.execPath,
