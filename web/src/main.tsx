@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles.css";
+import "./phone.css";
+import { setUpPhone } from "./phone";
 
 // Inside the M1 Mac app the page fills the window, under the traffic lights.
 if (navigator.userAgent.includes("Electron")) document.documentElement.classList.add("desktop");
@@ -23,6 +25,8 @@ if (vv && matchMedia("(pointer: coarse)").matches) {
   vv.addEventListener("scroll", fit);
   fit();
 }
+
+setUpPhone();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

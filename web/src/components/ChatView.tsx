@@ -68,12 +68,16 @@ function Welcome({ chat }: { chat?: Chat }) {
 
   return (
     <div className="page">
-      <TopBar />
+      <TopBar brand />
       <div className="welcome">
         <div className="welcome-inner">
-          <h1 className="welcome-title">{greeting(settings?.userName ?? "")}</h1>
-          <p className="welcome-sub">{ready ? "What can I help with?" : "Your models are starting up. You can type now."}</p>
+          <div className="welcome-head">
+            <h1 className="welcome-title">{greeting(settings?.userName ?? "")}</h1>
+            <p className="welcome-sub">{ready ? "What can I help with?" : "Your models are starting up. You can type now."}</p>
+          </div>
           <Composer chat={chat} autoFocus />
+          {/* Phones: one row of ideas above the message box that scrolls sideways. */}
+          <div className="welcome-ideas">
           <div className="chips">
             {routines.slice(0, 2).map((r) => (
               <button key={r.id} className="chip" onClick={() => api<{ id: string }>("POST", `/api/routines/${r.id}/run`).then((c) => go(`#/chat/${c.id}`), errorToast)}>
@@ -88,6 +92,7 @@ function Welcome({ chat }: { chat?: Chat }) {
                 <span className="idea-prompt">{idea.prompt}</span>
               </button>
             ))}
+          </div>
           </div>
           {ideas.items.length > 0 && (
             <button className="link welcome-more" onClick={() => go("#/foryou")}>

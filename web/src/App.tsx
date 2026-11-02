@@ -6,6 +6,7 @@ import { SettingsModal, Setup } from "./components/Settings";
 import { Toasts } from "./components/Shell";
 import { Logo, Sidebar } from "./components/Sidebar";
 import { Spinner } from "./components/ui";
+import { PHONE } from "./phone";
 import { connect, go, useStore } from "./store";
 
 function useTheme() {
@@ -13,7 +14,7 @@ function useTheme() {
   useEffect(() => {
     const dark = matchMedia("(prefers-color-scheme: dark)");
     // Same test as the phone layout in styles.css, where the top bar sits on --bg.
-    const phone = matchMedia("(max-width: 820px), (max-height: 500px) and (pointer: coarse)");
+    const phone = matchMedia(PHONE);
     const apply = () => {
       document.documentElement.dataset.theme = theme === "system" ? (dark.matches ? "dark" : "light") : theme;
       // The phone's status bar and browser bars take the color of the top bar.

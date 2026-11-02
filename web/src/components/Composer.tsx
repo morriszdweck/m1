@@ -7,6 +7,7 @@ import { api, transcribe, upload } from "../api";
 import { Mic as Microphone, wav } from "../audio/capture";
 import { errorToast, go, part, toast, useStore } from "../store";
 import type { ApprovalMode, Attachment, Chat, Part } from "../types";
+import { touchFirst } from "../phone";
 import { DEVICE, cx } from "../util";
 import { EffortMenu } from "./EffortMenu";
 import { ProjectPicker } from "./ProjectPicker";
@@ -106,7 +107,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
   }, []);
 
   useEffect(() => {
-    if (autoFocus) area.current?.focus();
+    if (autoFocus && !touchFirst()) area.current?.focus();
   }, [autoFocus, chat?.id]);
 
   const addFiles = useCallback(async (list: File[]) => {

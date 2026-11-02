@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
-import { Bell, Brain, Check, Copy, Cpu, Download, FolderOpen, Globe, Link2, Mic, Monitor, Moon, Play, RotateCcw, Shield, SlidersHorizontal, Smartphone, Square, Sun, Trash2, User } from "lucide-react";
+import { Bell, Brain, Check, ChevronRight, Copy, Cpu, Download, FolderOpen, Globe, Link2, Mic, Monitor, Moon, Play, RotateCcw, Shield, SlidersHorizontal, Smartphone, Square, Sun, Trash2, User } from "lucide-react";
 import { api, install, installable, isRemote } from "../api";
 import { errorToast, toast, useStore } from "../store";
 import type { ModelResolution, Part, Settings as SettingsType } from "../types";
+import { usePhone } from "../phone";
 import { DEVICE, IS_MAC, cx, timeAgo } from "../util";
 import { MODES, modeNote } from "./Composer";
 import { Logo } from "./Sidebar";
@@ -22,46 +23,100 @@ const PART_ICONS: Record<Part["id"], JSX.Element> = {
 };
 
 const TABS = [
-  { id: "general", label: "General", icon: <User size={15} /> },
-  { id: "safety", label: "Safety", icon: <Shield size={15} /> },
-  { id: "downloads", label: "Downloads", icon: <Download size={15} /> },
-  { id: "remote", label: "Remote", icon: <Smartphone size={15} /> },
-  { id: "advanced", label: "Advanced", icon: <SlidersHorizontal size={15} /> },
+  { id: "general", label: "General", icon: <User size={15} />, color: "#8e8e93", note: "Name, personality, appearance" },
+  { id: "safety", label: "Safety", icon: <Shield size={15} />, color: "#34c759", note: "What M1 may do without asking" },
+  { id: "downloads", label: "Downloads", icon: <Download size={15} />, color: "#0a84ff", note: "Models and helpers" },
+  { id: "remote", label: "Remote", icon: <Smartphone size={15} />, color: "#ff9f0a", note: "Use M1 from your phone" },
+  { id: "advanced", label: "Advanced", icon: <SlidersHorizontal size={15} />, color: "#5e5ce6", note: "Brain model, memory, creativity" },
 ];
 
+/**
+ * Settings. On a computer, tabs down the side. On a phone it works like the
+ * iPhone's Settings app: a list ("home") that opens each section as its own page.
+ */
 export function SettingsModal() {
   const tab = useStore((s) => s.settingsOpen);
   const settings = useStore((s) => s.settings);
+  const phone = usePhone();
   const nav = useRef<HTMLElement>(null);
-  // On phones the tabs are a row that scrolls sideways: keep the open one in view.
-  // Braces matter: newer browsers return a promise from scrollIntoView, and React
-  // would take a returned value for a cleanup function and crash calling it.
+  const last = useRef(tab);
+  // Pages slide in from the right going in, and from the left coming back.
+  const direction = tab === "home" ? "back" : last.current === "home" ? "in" : "";
   useEffect(() => {
-    nav.current?.querySelector(".active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    last.current = tab;
   }, [tab]);
   if (!tab || !settings) return null;
   const close = () => useStore.setState({ settingsOpen: null });
+  const open = (id: string) => useStore.setState({ settingsOpen: id });
+  const current = tab === "home" && !phone ? "general" : tab;
+  const section = TABS.find((t) => t.id === current);
 
   return (
-    <Modal title="Settings" onClose={close} wide>
-      <div className="settings">
-        <nav className="settings-nav" ref={nav}>
-          {TABS.map((t) => (
-            <button key={t.id} className={cx("nav-row", tab === t.id && "active")} onClick={() => useStore.setState({ settingsOpen: t.id })}>
-              {t.icon}
-              <span>{t.label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="settings-body">
-          {tab === "general" && <General settings={settings} />}
-          {tab === "safety" && <Safety settings={settings} />}
-          {tab === "downloads" && <Downloads />}
-          {tab === "remote" && <RemoteControl />}
-          {tab === "advanced" && <Advanced settings={settings} />}
+    <Modal
+      title={phone ? (section?.label ?? "Settings") : "Settings"}
+      onClose={close}
+      wide
+      className="settings-sheet"
+      back={phone && section ? { label: "Settings", onClick: () => open("home") } : undefined}
+    >
+      {phone && current === "home" ? (
+        <SettingsHome key="home" settings={settings} open={open} direction={direction} />
+      ) : (
+        <div className={cx("settings", direction && `slide-${direction}`)} key={phone ? current : "settings"}>
+          <nav className="settings-nav" ref={nav}>
+            {TABS.map((t) => (
+              <button key={t.id} className={cx("nav-row", current === t.id && "active")} onClick={() => open(t.id)}>
+                {t.icon}
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="settings-body">
+            {current === "general" && <General settings={settings} />}
+            {current === "safety" && <Safety settings={settings} />}
+            {current === "downloads" && <Downloads />}
+            {current === "remote" && <RemoteControl />}
+            {current === "advanced" && <Advanced settings={settings} />}
+          </div>
         </div>
-      </div>
+      )}
     </Modal>
+  );
+}
+
+/** Phones: the first page of Settings, a list like the iPhone's. */
+function SettingsHome({ settings, open, direction }: { settings: SettingsType; open: (id: string) => void; direction: string }) {
+  const update = useStore((s) => s.update);
+  const remote = useStore((s) => s.remote);
+  const name = settings.userName || "You";
+  const value: Record<string, string> = {
+    safety: MODES.find((m) => m.value === settings.approvalMode)?.label ?? "",
+    remote: isRemote ? "Connected" : remote?.enabled ? "On" : "Off",
+  };
+  return (
+    <div className={cx("settings-home", direction && `slide-${direction}`)}>
+      <button className="settings-me" onClick={() => open("general")}>
+        <span className="avatar big">{name.slice(0, 1).toUpperCase()}</span>
+        <span className="settings-me-text">
+          <span className="settings-me-name">{name}</span>
+          <span className="settings-me-note">M1 on your {DEVICE}</span>
+        </span>
+        <ChevronRight size={18} className="chev" />
+      </button>
+      <div className="cell-group">
+        {TABS.map((t) => (
+          <button key={t.id} className="cell link-cell" onClick={() => open(t.id)}>
+            <span className="cell-icon" style={{ background: t.color }}>
+              {t.icon}
+            </span>
+            <span className="cell-label">{t.label}</span>
+            {value[t.id] && <span className="cell-value">{value[t.id]}</span>}
+            <ChevronRight size={18} className="chev" />
+          </button>
+        ))}
+      </div>
+      {update && <p className="cell-foot">{update.build ? `M1 ${update.version}, build ${update.build}` : `M1 ${update.version}`}</p>}
+    </div>
   );
 }
 
