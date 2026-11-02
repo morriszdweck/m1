@@ -338,7 +338,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
               width={300}
               trigger={(open, toggle) => (
                 <button
-                  className={cx("mode-btn", open && "active")}
+                  className={cx("mode-btn", "perm-btn", open && "active")}
                   onClick={toggle}
                   aria-label={`Permissions: ${mode.label}`}
                   title={guardianWanted ? "Approve for Me turns on once Auto 150M is ready" : "Permissions"}

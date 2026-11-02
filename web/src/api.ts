@@ -4,9 +4,18 @@
 export const token = document.querySelector<HTMLMetaElement>('meta[name="m1-token"]')?.content ?? "";
 
 /** Set by rc.mincoffical.codes when this UI runs remotely: requests and the live socket go through the encrypted relay. */
-type Remote = { fetch: typeof fetch; WebSocket: new (path: string) => WebSocket; openFile: (path: string) => void };
+type Remote = {
+  fetch: typeof fetch;
+  WebSocket: new (path: string) => WebSocket;
+  openFile: (path: string) => void;
+  /** How this page can be installed: as an app already, by the browser's prompt, by Add to Home Screen on iPhone/iPad, or not here. */
+  installable?: () => "standalone" | "prompt" | "ios" | "";
+  install?: () => Promise<string>;
+};
 const remote = (window as unknown as { __M1_REMOTE__?: Remote }).__M1_REMOTE__;
 export const isRemote = Boolean(remote);
+export const installable = () => remote?.installable?.() ?? "";
+export const install = () => remote?.install?.() ?? Promise.resolve("unavailable");
 export const rawFetch: typeof fetch = remote ? remote.fetch : (input, init) => fetch(input, init);
 export const openSocket = (path: string): WebSocket => (remote ? new remote.WebSocket(path) : new WebSocket(socketURL(path)));
 /** Opens an attachment. Remotely it can't be a plain link, since the file lives on the computer. */

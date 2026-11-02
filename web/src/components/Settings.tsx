@@ -1,9 +1,9 @@
 // Settings, the one-click downloads, and the first-run setup screen.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
 import { Bell, Brain, Check, Copy, Cpu, Download, FolderOpen, Globe, Link2, Mic, Monitor, Moon, Play, RotateCcw, Shield, SlidersHorizontal, Smartphone, Square, Sun, Trash2, User } from "lucide-react";
-import { api, isRemote } from "../api";
+import { api, install, installable, isRemote } from "../api";
 import { errorToast, toast, useStore } from "../store";
 import type { ModelResolution, Part, Settings as SettingsType } from "../types";
 import { DEVICE, IS_MAC, cx, timeAgo } from "../util";
@@ -32,13 +32,16 @@ const TABS = [
 export function SettingsModal() {
   const tab = useStore((s) => s.settingsOpen);
   const settings = useStore((s) => s.settings);
+  const nav = useRef<HTMLElement>(null);
+  // On phones the tabs are a row that scrolls sideways: keep the open one in view.
+  useEffect(() => nav.current?.querySelector(".active")?.scrollIntoView({ block: "nearest", inline: "nearest" }), [tab]);
   if (!tab || !settings) return null;
   const close = () => useStore.setState({ settingsOpen: null });
 
   return (
     <Modal title="Settings" onClose={close} wide>
       <div className="settings">
-        <nav className="settings-nav">
+        <nav className="settings-nav" ref={nav}>
           {TABS.map((t) => (
             <button key={t.id} className={cx("nav-row", tab === t.id && "active")} onClick={() => useStore.setState({ settingsOpen: t.id })}>
               {t.icon}
@@ -464,13 +467,45 @@ function QR({ text }: { text: string }) {
   );
 }
 
+/** Remotely: put M1 on the Home Screen (iPhone, iPad) or install it (Chrome, Edge, Android). */
+function InstallApp() {
+  const [how, setHow] = useState(installable);
+  if (how === "standalone")
+    return (
+      <Row title="M1 app" detail="Installed. M1 opens full screen from your Home Screen or app list.">
+        <Check size={16} />
+      </Row>
+    );
+  const go = () =>
+    install().then((r) => {
+      if (r === "accepted") toast("M1 is installed.");
+      setHow(installable());
+    }, errorToast);
+  const detail =
+    how === "ios"
+      ? "Add M1 to your Home Screen to open it full screen, like an app."
+      : how === "prompt"
+        ? "Install M1 to open it in its own window, like an app."
+        : "To use M1 like an app, choose Install app or Add to Home Screen in your browser's menu.";
+  return (
+    <Row title="M1 app" detail={detail}>
+      {how && (
+        <button className="btn primary" onClick={go}>
+          <Smartphone size={14} /> {how === "ios" ? "Add to Home Screen" : "Install"}
+        </button>
+      )}
+    </Row>
+  );
+}
+
 /** Remote control from rc.mincoffical.codes: the switch, the pairing link and its QR code. */
 function RemoteControl() {
   const remote = useStore((s) => s.remote);
   if (isRemote)
     return (
       <>
-        <p className="muted">You're controlling M1 remotely. Everything is end-to-end encrypted between this browser and your {DEVICE}.</p>
+        <InstallApp />
+        <p className="muted">You're controlling M1 remotely. Everything is end-to-end encrypted between this device and your {DEVICE}.</p>
         <p className="muted">To turn remote control off or make a new link, use Settings → Remote on the {DEVICE} itself.</p>
       </>
     );

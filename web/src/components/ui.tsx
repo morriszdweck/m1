@@ -82,12 +82,12 @@ export function Menu({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const onDown = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -95,6 +95,8 @@ export function Menu({
   return (
     <div className="menu-anchor" ref={ref}>
       {trigger(open, () => setOpen(!open))}
+      {/* On phones menus open as a sheet at the bottom; the scrim catches the tap that closes it. */}
+      {open && <div className="menu-scrim" onClick={close} aria-hidden="true" />}
       {open && (
         <div className={cx("menu", `align-${align}`, `side-${side}`)} style={width ? { width } : undefined} role="menu">
           {typeof items === "function"
@@ -130,13 +132,18 @@ export function Menu({
 }
 
 export function Modal({ title, onClose, children, wide, footer }: { title: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean; footer?: ReactNode }) {
+  const downOnBackdrop = useRef(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="modal-backdrop"
+      onPointerDown={(e) => (downOnBackdrop.current = e.target === e.currentTarget)}
+      onClick={(e) => downOnBackdrop.current && e.target === e.currentTarget && onClose()}
+    >
       <div className={cx("modal", wide && "wide")} role="dialog" aria-modal="true">
         <div className="modal-head">
           <h2>{title}</h2>

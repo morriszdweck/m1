@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <meta name="color-scheme" content="light dark" />
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#121213" media="(prefers-color-scheme: dark)" />
@@ -10,41 +10,67 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="M1" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="format-detection" content="telephone=no" />
 <meta name="description" content="Remote control for M1, the private AI agent. End-to-end encrypted." />
 <title>M1 Remote</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/icon-180.png" />
-<link rel="manifest" href="/manifest.webmanifest" />
-<style>
-:root{--bg:#fff;--fg:#0d0d0e;--mute:#6b6d72;--line:#e8e8eb;--card:#f7f7f8;--ac:#1a8cff;--bad:#e5484d}
-@media (prefers-color-scheme:dark){:root{--bg:#121213;--fg:#ececee;--mute:#9a9ca2;--line:#232427;--card:#1a1a1c;--ac:#339cff;--bad:#ff6369}}
-*{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-#rc{min-height:100%;display:flex;align-items:center;justify-content:center;padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+<link rel="manifest" id="mf" href="/manifest.webmanifest" />
+<script>
+// iPhone and iPad save the page's own address, pairing key included, when it's
+// added to the Home Screen; their manifest has no start_url so nothing overrides it.
+(function () {
+  var ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ios) {
+    document.documentElement.classList.add("ios");
+    document.getElementById("mf").href = "/manifest-ios.webmanifest";
+  }
+})();
+</script>
+<style id="rc-css">
+/* Everything here is scoped to #rc so none of it reaches M1's own UI. */
+html:not(.m1){background:#fff;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+@media (prefers-color-scheme:dark){html:not(.m1){background:#121213}}
+html:not(.m1),html:not(.m1) body{height:100%;margin:0}
+#rc{--bg:#fff;--fg:#0d0d0e;--mute:#6b6d72;--line:#e3e3e7;--card:#f4f4f6;--ac:#1a8cff;--bad:#e5484d;
+  box-sizing:border-box;min-height:100%;display:flex;flex-direction:column;
+  padding:max(28px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
+  background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+@media (prefers-color-scheme:dark){#rc{--bg:#121213;--fg:#ececee;--mute:#9a9ca2;--line:#2a2b2f;--card:#1c1c1f;--ac:#339cff;--bad:#ff6369}}
 #rc[hidden]{display:none}
-.card{width:100%;max-width:420px;text-align:center}
-.logo{font-weight:800;font-size:44px;letter-spacing:-.04em;color:var(--ac);line-height:1}
-.sub{margin:6px 0 28px;color:var(--mute);font-size:14px;letter-spacing:.02em}
-h1{font-size:21px;line-height:1.3;margin:0 0 10px;letter-spacing:-.01em}
-p{margin:0 0 14px;color:var(--mute)}
-ol{text-align:left;margin:18px 0 22px;padding:0 0 0 22px;color:var(--mute)}
-ol li{margin:0 0 8px}
-ol b{color:var(--fg);font-weight:600}
-.paste{display:flex;gap:8px;margin:8px 0 0}
-input{flex:1;min-width:0;height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
-input:focus{outline:2px solid var(--ac);outline-offset:-1px;border-color:transparent}
-button{height:42px;padding:0 16px;border-radius:11px;border:0;background:var(--ac);color:#fff;font:600 14px/1 inherit;font-family:inherit;cursor:pointer}
-button.ghost{background:transparent;color:var(--mute);border:1px solid var(--line)}
-button:active{transform:scale(.98)}
-.err{color:var(--bad);font-size:13px;min-height:20px;margin:8px 0 0}
-.spin{width:28px;height:28px;margin:6px auto 18px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--ac);animation:s .8s linear infinite}
-@keyframes s{to{transform:rotate(360deg)}}
-.bar{height:4px;border-radius:4px;background:var(--line);overflow:hidden;margin:18px auto 0;max-width:240px}
-.bar i{display:block;height:100%;width:0;background:var(--ac);transition:width .2s}
-.lock{display:inline-flex;align-items:center;gap:6px;margin-top:26px;font-size:12px;color:var(--mute)}
-.lock svg{width:13px;height:13px}
-.row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:6px}
-@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
+#rc.over{position:fixed;inset:0;z-index:2147483000;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+#rc *{box-sizing:border-box}
+#rc .card{width:100%;max-width:420px;margin:auto;text-align:center}
+#rc .logo{font-weight:800;font-size:44px;letter-spacing:-.04em;color:var(--ac);line-height:1}
+#rc .sub{margin:6px 0 28px;color:var(--mute);font-size:14px;letter-spacing:.02em}
+#rc h1{font-size:22px;line-height:1.3;margin:0 0 10px;letter-spacing:-.015em;font-weight:700}
+#rc p{margin:0 0 14px;color:var(--mute);font-size:15px}
+#rc ol{text-align:left;margin:18px 0 22px;padding:0 0 0 22px;color:var(--mute);font-size:15px}
+#rc ol li{margin:0 0 8px}
+#rc b{color:var(--fg);font-weight:600}
+#rc ol.steps{list-style:none;padding:0;margin:22px 0 18px;display:grid;gap:8px}
+#rc .steps li{display:flex;gap:12px;align-items:flex-start;margin:0;padding:13px 14px;border-radius:14px;background:var(--card)}
+#rc .steps .n{flex:none;width:24px;height:24px;margin-top:1px;border-radius:50%;background:var(--ac);color:#fff;font-size:13px;font-weight:700;line-height:24px;text-align:center}
+#rc .steps svg{width:19px;height:19px;vertical-align:-4px;margin:0 1px;color:var(--ac)}
+#rc .paste{display:flex;gap:8px;margin:8px 0 0}
+#rc input{flex:1;min-width:0;height:46px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-size:16px;-webkit-appearance:none;appearance:none}
+#rc input:focus{outline:2px solid var(--ac);outline-offset:-1px;border-color:transparent}
+#rc button{height:46px;padding:0 18px;border-radius:12px;border:0;background:var(--ac);color:#fff;font:600 15px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;cursor:pointer;touch-action:manipulation;-webkit-appearance:none;appearance:none}
+#rc button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+#rc button.block{display:block;width:100%;margin:10px 0 0}
+#rc button:active{transform:scale(.98)}
+#rc .err{color:var(--bad);font-size:13px;min-height:20px;margin:8px 0 0}
+#rc .spin{width:28px;height:28px;margin:6px auto 18px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--ac);animation:rcs .8s linear infinite}
+@keyframes rcs{to{transform:rotate(360deg)}}
+#rc .bar{height:4px;border-radius:4px;background:var(--line);overflow:hidden;margin:18px auto 0;max-width:240px}
+#rc .bar i{display:block;height:100%;width:0;background:var(--ac);transition:width .2s}
+#rc .lock{display:inline-flex;align-items:center;gap:6px;margin-top:26px;font-size:12px;color:var(--mute)}
+#rc .lock svg{width:13px;height:13px}
+#rc .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+@media (max-height:560px){#rc .sub{margin-bottom:16px}#rc .logo{font-size:36px}#rc .lock{margin-top:14px}}
+@media (prefers-reduced-motion:reduce){#rc .spin{animation-duration:2.4s}}
 </style>
 </head>
 <body>
@@ -54,17 +80,31 @@ button:active{transform:scale(.98)}
 "use strict";
 (() => {
   const KEY_STORE = "m1rc:key";
+  const DEAD_STORE = "m1rc:dead"; // a link key to ignore: rejected, or replaced by a pasted one
+  const SKIP_STORE = "m1rc:noinstall"; // "Continue in Safari" was chosen for this key
   const CACHE = "m1rc-ui-v1";
   const CHUNK = 192 * 1024;
   const RELAY = (location.protocol === "http:" ? "ws://" : "wss://") + location.host + "/relay";
+  const rc = document.getElementById("rc");
   const view = document.getElementById("view");
   const enc = new TextEncoder(), dec = new TextDecoder();
+  const ua = navigator.userAgent;
+  const ios = document.documentElement.classList.contains("ios");
+  const standalone = () => navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+
+  // Chrome and Edge: keep the install prompt for the Install button in Settings → Remote.
+  let installEvent = null;
+  addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; });
+  addEventListener("appinstalled", () => (installEvent = null));
 
   // ---- Small helpers ----
   const lockIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  const shareIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M8 10H6.5A2.5 2.5 0 0 0 4 12.5v7A2.5 2.5 0 0 0 6.5 22h11a2.5 2.5 0 0 0 2.5-2.5v-7a2.5 2.5 0 0 0-2.5-2.5H16"/></svg>';
+  const addIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4.5"/><path d="M12 8v8M8 12h8"/></svg>';
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const $ = (id) => document.getElementById(id);
   function show(html) {
-    document.getElementById("rc").hidden = false;
+    rc.hidden = false;
     view.innerHTML = '<div class="logo">M1</div><div class="sub">Remote control</div>' + html + '<div class="lock">' + lockIcon + "End-to-end encrypted</div>";
   }
   function b64u(bytes) {
@@ -78,43 +118,82 @@ button:active{transform:scale(.98)}
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
   }
-  const store = {
-    get() { try { return localStorage.getItem(KEY_STORE) || ""; } catch { return ""; } },
-    set(v) { try { localStorage.setItem(KEY_STORE, v); } catch {} },
-    clear() { try { localStorage.removeItem(KEY_STORE); } catch {} },
+  const ls = {
+    get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} },
   };
   const keyFrom = (text) => {
-    const m = String(text || "").match(/(?:^|[#&?])k=([A-Za-z0-9_-]{43})(?:$|&)/) || String(text || "").trim().match(/^([A-Za-z0-9_-]{43})$/);
+    const m = String(text || "").match(/(?:^|[#&?/])k=([A-Za-z0-9_-]{43})(?:$|&)/) || String(text || "").trim().match(/^([A-Za-z0-9_-]{43})$/);
     return m ? m[1] : "";
   };
 
   // ---- Pairing ----
-  let key = keyFrom(location.hash);
-  if (key) {
-    store.set(key);
-    history.replaceState(null, "", location.pathname + "#/");
-  } else key = store.get();
+  // A Home Screen app always starts from the address it was saved with, so a
+  // key that stopped working there is remembered and skipped.
+  const linkKey = keyFrom(location.hash);
+  let key = linkKey && linkKey !== ls.get(DEAD_STORE) ? linkKey : "";
+  if (key) ls.set(KEY_STORE, key);
+  else key = ls.get(KEY_STORE);
+  const askInstall = Boolean(key) && key === linkKey && ios && !standalone() && ls.get(SKIP_STORE) !== key;
+  // Keep the key in the address only while it may be saved to the Home Screen.
+  if (linkKey) history.replaceState(null, "", location.pathname + (askInstall ? "#k=" + key : "#/"));
+
+  function usePastedKey(k) {
+    if (linkKey && linkKey !== k) ls.set(DEAD_STORE, linkKey);
+    ls.set(KEY_STORE, k);
+    location.replace(location.pathname + "#/");
+    location.reload();
+  }
 
   function pairScreen(error) {
+    const clip = Boolean(navigator.clipboard && navigator.clipboard.readText);
     show(
       "<h1>Control M1 from here</h1>" +
-        "<p>Use your chats, routines and everything else on your computer's M1 from this browser.</p>" +
-        "<ol><li>On your computer, open <b>M1</b>.</li><li>Go to <b>Settings → Remote</b> and turn on <b>Remote control</b>.</li><li>Scan the QR code with this phone, or copy the link and open it here.</li></ol>" +
-        '<form class="paste" id="pf"><input id="pl" placeholder="Or paste the link" autocomplete="off" autocapitalize="off" spellcheck="false" /><button>Connect</button></form>' +
+        "<p>Use your chats, routines and everything else on your computer's M1 from this " + (navigator.maxTouchPoints > 0 ? "device" : "browser") + ".</p>" +
+        "<ol><li>On your computer, open <b>M1</b>.</li><li>Go to <b>Settings → Remote</b> and turn on <b>Remote control</b>.</li><li>Scan the QR code with this phone's camera, or copy the link and paste it here.</li></ol>" +
+        '<form class="paste" id="pf"><input id="pl" placeholder="Paste the link" inputmode="url" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" /><button>Connect</button></form>' +
+        (clip ? '<button type="button" class="ghost block" id="pc">Paste from clipboard</button>' : "") +
         '<div class="err" id="pe">' + esc(error || "") + "</div>"
     );
-    document.getElementById("pf").onsubmit = (e) => {
+    const bad = () => ($("pe").textContent = "That isn't an M1 remote link.");
+    $("pf").onsubmit = (e) => {
       e.preventDefault();
-      const k = keyFrom(document.getElementById("pl").value);
-      if (!k) return void (document.getElementById("pe").textContent = "That isn't an M1 remote link.");
-      store.set(k);
-      location.replace(location.pathname + "#/");
-      location.reload();
+      const k = keyFrom($("pl").value);
+      if (!k) return void bad();
+      usePastedKey(k);
     };
+    if (clip)
+      $("pc").onclick = async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          const k = keyFrom(text);
+          if (!k) return void bad();
+          usePastedKey(k);
+        } catch {
+          $("pe").textContent = "Couldn't read the clipboard. Paste the link into the box instead.";
+        }
+      };
   }
   function forget() {
-    store.clear();
+    ls.del(KEY_STORE);
     location.replace(location.pathname);
+  }
+
+  // ---- Add to Home Screen (iPhone and iPad) ----
+  function installSheet(label, done) {
+    const other = /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+    show(
+      "<h1>Add M1 to your Home Screen</h1>" +
+        "<p>It opens full screen like an app and stays paired with your computer.</p>" +
+        '<ol class="steps">' +
+        '<li><span class="n">1</span><div>Tap <b>Share</b> ' + shareIcon + (other ? " in the address bar." : " in Safari's toolbar, or under <b>•••</b> first.") + "</div></li>" +
+        '<li><span class="n">2</span><div>Choose <b>Add to Home Screen</b> ' + addIcon + ". Scroll down if you don't see it.</div></li>" +
+        '<li><span class="n">3</span><div>Keep <b>Open as Web App</b> on, tap <b>Add</b>, then open <b>M1</b> from your Home Screen.</div></li>' +
+        "</ol>" +
+        '<button class="ghost block" id="cs">' + esc(label) + "</button>"
+    );
+    $("cs").onclick = done;
   }
 
   if (!key) return pairScreen();
@@ -141,7 +220,8 @@ button:active{transform:scale(.98)}
   }
 
   // ---- Relay link ----
-  let ws = null, hostUp = false, retry = 0, booted = false, badKey = false;
+  let ws = null, hostUp = false, retry = 0, booted = false, badKey = false, started = false;
+  let heard = 0; // when the relay last sent anything
   const pending = new Map(); // request id -> {resolve, reject, timer}
   const sockets = new Map(); // socket id -> RemoteSocket
   const parts = new Map();
@@ -171,6 +251,7 @@ button:active{transform:scale(.98)}
     ws = sock;
     sock.onopen = () => (retry = 0);
     sock.onmessage = (m) => {
+      heard = Date.now();
       let f;
       try { f = JSON.parse(m.data); } catch { return; }
       if (f.ev === "host") return setHost(Boolean(f.up));
@@ -197,6 +278,30 @@ button:active{transform:scale(.98)}
     };
   }
 
+  /** Drops a link that looks alive but isn't (a phone woke up on another network, say) and dials again. */
+  function redial(sock) {
+    if (ws !== sock) return;
+    sock.onclose = null;
+    try { sock.close(); } catch {}
+    ws = null;
+    setHost(false);
+    retry = 0;
+    connect();
+  }
+
+  /** After the page comes back: check the link really works, quickly. */
+  function check() {
+    if (!started || badKey) return;
+    if (!ws || ws.readyState > 1) { retry = 0; return void connect(); }
+    if (ws.readyState !== 1) return;
+    const sock = ws;
+    // With the computer away there's nothing to lose: just dial again.
+    if (!hostUp) return redial(sock);
+    const since = Date.now();
+    seal({ t: "ping" }).then((d) => sock.readyState === 1 && sock.send(JSON.stringify({ d })), () => {});
+    setTimeout(() => { if (heard < since) redial(sock); }, 5000);
+  }
+
   async function sendMsg(obj) {
     await whenUp();
     const d = await seal(obj);
@@ -217,6 +322,7 @@ button:active{transform:scale(.98)}
     } else if (msg.t === "opened") sockets.get(msg.s)?._opened();
     else if (msg.t === "ev") sockets.get(msg.s)?._message(msg.data);
     else if (msg.t === "shut") sockets.get(msg.s)?._closed();
+    // "pong" needs nothing: hearing anything at all marks the link alive.
   }
 
   function keyRejected() {
@@ -224,9 +330,15 @@ button:active{transform:scale(.98)}
     badKey = true;
     for (const p of pending.values()) p.reject(new Error("This link no longer works."));
     pending.clear();
-    store.clear();
+    ls.del(KEY_STORE);
+    ls.set(DEAD_STORE, key);
     if (ws) { const s = ws; ws = null; s.onclose = null; s.close(); }
-    pairScreen("That link no longer works. Scan the new code in M1's Settings → Remote.");
+    rc.classList.remove("over");
+    pairScreen(
+      standalone() && ios
+        ? "That link no longer works. Paste the new one from M1's Settings → Remote, or add the new link to your Home Screen."
+        : "That link no longer works. Scan the new code in M1's Settings → Remote."
+    );
   }
 
   // ---- fetch() for the app ----
@@ -313,6 +425,32 @@ button:active{transform:scale(.98)}
       .catch(() => w && w.close());
   }
 
+  // ---- Install, for Settings → Remote ----
+  const installable = () => (standalone() ? "standalone" : installEvent ? "prompt" : ios ? "ios" : "");
+  async function install() {
+    if (installEvent) {
+      const e = installEvent;
+      installEvent = null;
+      try {
+        await e.prompt();
+        return (await e.userChoice).outcome;
+      } catch {
+        return "dismissed";
+      }
+    }
+    if (!ios || standalone()) return "unavailable";
+    // Put the key back in the address for Add to Home Screen; the app's own route returns after.
+    const back = location.hash;
+    history.replaceState(null, "", location.pathname + "#k=" + key);
+    rc.classList.add("over");
+    installSheet("Done", () => {
+      history.replaceState(null, "", location.pathname + back);
+      rc.hidden = true;
+      rc.classList.remove("over");
+    });
+    return "shown";
+  }
+
   // ---- Screens ----
   function offline() {
     show(
@@ -321,13 +459,13 @@ button:active{transform:scale(.98)}
         "<p>Make sure your computer is awake, M1 is open, and Settings → Remote → Remote control is on. This page connects by itself.</p>" +
         '<div class="row"><button class="ghost" id="fg">Use a different link</button></div>'
     );
-    document.getElementById("fg").onclick = forget;
+    $("fg").onclick = forget;
   }
 
   let booting = false;
   const progress = {
     total: 0, done: 0,
-    got(n) { this.done += n; const el = document.getElementById("pb"); if (el && this.total) el.style.width = Math.min(100, (this.done / this.total) * 100) + "%"; },
+    got(n) { this.done += n; const el = $("pb"); if (el && this.total) el.style.width = Math.min(100, (this.done / this.total) * 100) + "%"; },
   };
 
   // ---- Load M1's own UI from the computer, keep it cached by file name ----
@@ -375,27 +513,41 @@ button:active{transform:scale(.98)}
       meta.name = "m1-token";
       meta.content = "remote";
       document.head.appendChild(meta);
-      window.__M1_REMOTE__ = { fetch: rcFetch, WebSocket: RemoteSocket, openFile, forget };
+      window.__M1_REMOTE__ = { fetch: rcFetch, WebSocket: RemoteSocket, openFile, forget, install, installable };
       if (!location.hash.startsWith("#/")) history.replaceState(null, "", location.pathname + "#/");
       booted = true;
       booting = false;
-      document.getElementById("rc").hidden = true;
+      rc.hidden = true;
+      document.documentElement.classList.add("m1");
       await import(URL.createObjectURL(new Blob([jsText], { type: "text/javascript" })));
     } catch (e) {
       booting = false;
       if (badKey) return;
       show('<h1>Couldn\'t load M1</h1><p>' + esc(e.message || e) + '</p><div class="row"><button id="ry">Try again</button><button class="ghost" id="fg">Use a different link</button></div>');
-      document.getElementById("ry").onclick = () => location.reload();
-      document.getElementById("fg").onclick = forget;
+      $("ry").onclick = () => location.reload();
+      $("fg").onclick = forget;
     }
   }
 
-  show('<h1>Connecting…</h1><div class="spin"></div>');
-  connect();
-  // Phones freeze background tabs; reconnect as soon as the page is back.
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && !badKey && (!ws || ws.readyState > 1)) { retry = 0; connect(); }
-  });
+  function start() {
+    started = true;
+    show('<h1>Connecting…</h1><div class="spin"></div>');
+    connect();
+  }
+
+  if (askInstall)
+    installSheet(/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua) ? "Continue in the browser" : "Continue in Safari", () => {
+      ls.set(SKIP_STORE, key);
+      history.replaceState(null, "", location.pathname + "#/");
+      start();
+    });
+  else start();
+
+  // Phones freeze background pages and may wake up on another network:
+  // check the link as soon as the page is back.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+  addEventListener("pageshow", (e) => { if (e.persisted) check(); });
+  addEventListener("online", check);
 })();
 </script>
 </body>
