@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { ArrowUp, Check, FileText, Mic, Paperclip, ShieldCheck, ShieldQuestion, Square, X, Zap } from "lucide-react";
 import { api, transcribe, upload } from "../api";
 import { Mic as Microphone, wav } from "../audio/capture";
-import { errorToast, go, part, toast, useStore } from "../store";
+import { errorToast, go, noteChat, part, toast, useStore } from "../store";
 import type { ApprovalMode, Attachment, Chat, Part } from "../types";
 import { touchFirst } from "../phone";
 import { DEVICE, cx } from "../util";
@@ -179,6 +179,7 @@ export function Composer({ chat, autoFocus }: { chat?: Chat; autoFocus?: boolean
         const project = useStore.getState().draftProject;
         const created = await api<Chat>("POST", "/api/chats", { ...body, project: project ?? undefined });
         useStore.setState({ draftProject: null });
+        noteChat(created);
         go(`#/chat/${created.id}`);
       }
       keepDraft("");

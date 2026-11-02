@@ -136,6 +136,12 @@ function upsertChat(chat: Chat) {
   set({ chats: [chat, ...chats].sort((a, b) => b.updatedAt - a.updatedAt), live, thoughts });
 }
 
+/** A chat this page just made: show it right away, even if its own update is still
+ *  on the way (over remote control the two can arrive in either order). */
+export function noteChat(chat: Chat) {
+  if (!get().chats.some((c) => c.id === chat.id)) upsertChat(chat);
+}
+
 type Event =
   | ({ type: "hello" } & Snapshot)
   | { type: "chat"; chat: Chat }

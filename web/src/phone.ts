@@ -151,9 +151,60 @@ function pressAndHold() {
   document.addEventListener("touchcancel", cancel, { passive: true });
 }
 
+/** Whether something under the finger can scroll along this axis. */
+function canScroll(el: Element | null, axis: "x" | "y") {
+  for (; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+    const style = getComputedStyle(el);
+    if (axis === "y" ? el.scrollHeight > el.clientHeight + 1 && /auto|scroll/.test(style.overflowY) : el.scrollWidth > el.clientWidth + 1 && /auto|scroll/.test(style.overflowX)) return true;
+  }
+  return false;
+}
+
+/** Like an app, the page itself stays put: no pinch or double-tap zoom, and no
+ *  sliding the whole page around (or out from under the keyboard). Drags over
+ *  something that scrolls (the chat, lists, sheets, the ideas strip) work as usual. */
+function lockPage() {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (meta && !meta.content.includes("maximum-scale")) meta.content += ", maximum-scale=1, user-scalable=no";
+  // Safari ignores user-scalable=no; its own pinch events can still be refused.
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+
+  let target: Element | null = null;
+  let at = { x: 0, y: 0 };
+  let allow: boolean | null = null;
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      target = e.target as Element;
+      at = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      allow = null;
+    },
+    { passive: true },
+  );
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (e.touches.length > 1) {
+        if (e.cancelable) e.preventDefault(); // pinch
+        return;
+      }
+      if (allow === null) {
+        const dx = Math.abs(e.touches[0].clientX - at.x);
+        const dy = Math.abs(e.touches[0].clientY - at.y);
+        if (!dx && !dy) return;
+        // Sliders, pickers and the effort slider handle their own drags.
+        allow = !!target?.closest('input[type="range"], select, .effort-track') || canScroll(target, dy >= dx ? "y" : "x");
+      }
+      if (!allow && e.cancelable) e.preventDefault();
+    },
+    { passive: false },
+  );
+}
+
 export function setUpPhone() {
   scrollState();
   if (!matchMedia("(pointer: coarse)").matches) return;
+  lockPage();
   drawerSwipe();
   pressAndHold();
 }

@@ -19,7 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api, fileURL, openFile } from "../api";
-import { errorToast, go, modelsReady, useStore } from "../store";
+import { errorToast, go, modelsReady, noteChat, useStore } from "../store";
 import type { Attachment, Chat, Message } from "../types";
 import { chatMarkdown, cx, download, duration, greeting } from "../util";
 import { ApprovalDock } from "./ApprovalDock";
@@ -64,7 +64,24 @@ function Welcome({ chat }: { chat?: Chat }) {
   const ready = modelsReady(parts);
   const cards = (ideas.items.length ? ideas.items : STARTERS).slice(0, 4);
 
-  const start = (text: string) => api<Chat>("POST", "/api/chats", { text }).then((c) => go(`#/chat/${c.id}`), errorToast);
+  // Over remote control a tap can take a moment to reach the computer: the tapped
+  // suggestion shows it's starting, and a second tap doesn't start a second chat.
+  const [starting, setStarting] = useState("");
+  const begin = (key: string, request: () => Promise<{ id: string }>) => {
+    if (starting) return;
+    setStarting(key);
+    request().then(
+      (c) => {
+        if ("messages" in c) noteChat(c as Chat);
+        go(`#/chat/${c.id}`);
+      },
+      (e) => {
+        setStarting("");
+        errorToast(e);
+      },
+    );
+  };
+  const start = (idea: { title: string; prompt: string }) => begin(idea.title, () => api<Chat>("POST", "/api/chats", { text: idea.prompt }));
 
   return (
     <div className="page">
@@ -80,14 +97,19 @@ function Welcome({ chat }: { chat?: Chat }) {
           <div className="welcome-ideas">
           <div className="chips">
             {routines.slice(0, 2).map((r) => (
-              <button key={r.id} className="chip" onClick={() => api<{ id: string }>("POST", `/api/routines/${r.id}/run`).then((c) => go(`#/chat/${c.id}`), errorToast)}>
+              <button
+                key={r.id}
+                className={cx("chip", starting === r.id && "starting")}
+                disabled={!!starting}
+                onClick={() => begin(r.id, () => api<{ id: string }>("POST", `/api/routines/${r.id}/run`))}
+              >
                 <Repeat size={15} /> {r.name}
               </button>
             ))}
           </div>
           <div className="idea-grid">
             {cards.map((idea) => (
-              <button key={idea.title} className="idea-card" onClick={() => start(idea.prompt)}>
+              <button key={idea.title} className={cx("idea-card", starting === idea.title && "starting")} disabled={!!starting} onClick={() => start(idea)}>
                 <span className="idea-title">{idea.title}</span>
                 <span className="idea-prompt">{idea.prompt}</span>
               </button>
@@ -112,14 +134,18 @@ function Conversation({ chat }: { chat: Chat }) {
   const busy = running.includes(chat.id);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  const lastTop = useRef(0);
+  const touching = useRef(false);
   const [showJump, setShowJump] = useState(false);
   const live = useStore((s) => s.live);
   const lastId = chat.messages[chat.messages.length - 1]?.id;
 
   // Stay at the bottom while text streams in, unless you've scrolled up to read.
+  // Never while a finger is on the screen: that would yank the chat out from under it.
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+    if (el && pinned.current && !touching.current) el.scrollTop = el.scrollHeight;
+    else if (el) setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 300);
   }, [chat, live]);
 
   useLayoutEffect(() => {
@@ -131,8 +157,18 @@ function Conversation({ chat }: { chat: Chat }) {
   const onScroll = () => {
     const el = scroller.current!;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-    pinned.current = gap < 80;
+    // Any move up lets go of the bottom, however small; a finger moves a few
+    // pixels at a time, so "more than 80px away" never came true while text streamed in.
+    if (el.scrollTop < lastTop.current - 1 && gap > 2) pinned.current = false;
+    else if (gap < 40) pinned.current = true;
+    lastTop.current = el.scrollTop;
     setShowJump(gap > 300);
+  };
+  const onTouchStart = () => {
+    touching.current = true;
+  };
+  const onTouchEnd = () => {
+    touching.current = false;
   };
 
   const remove = async () => {
@@ -157,7 +193,7 @@ function Conversation({ chat }: { chat: Chat }) {
           { label: "Delete", icon: <Trash2 size={15} />, danger: true, onClick: remove },
         ]}
       />
-      <div className="thread" ref={scroller} onScroll={onScroll}>
+      <div className="thread" ref={scroller} onScroll={onScroll} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
         <div className="thread-inner">
           {chat.messages.map((m, i) =>
             m.role === "user" ? (
