@@ -34,7 +34,11 @@ export function SettingsModal() {
   const settings = useStore((s) => s.settings);
   const nav = useRef<HTMLElement>(null);
   // On phones the tabs are a row that scrolls sideways: keep the open one in view.
-  useEffect(() => nav.current?.querySelector(".active")?.scrollIntoView({ block: "nearest", inline: "nearest" }), [tab]);
+  // Braces matter: newer browsers return a promise from scrollIntoView, and React
+  // would take a returned value for a cleanup function and crash calling it.
+  useEffect(() => {
+    nav.current?.querySelector(".active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [tab]);
   if (!tab || !settings) return null;
   const close = () => useStore.setState({ settingsOpen: null });
 
