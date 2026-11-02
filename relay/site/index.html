@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#121213" media="(prefers-color-scheme: dark)" />
+<meta name="referrer" content="no-referrer" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="M1" />
+<meta name="description" content="Remote control for M1, the private AI agent. End-to-end encrypted." />
+<title>M1 Remote</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icon-180.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<style>
+:root{--bg:#fff;--fg:#0d0d0e;--mute:#6b6d72;--line:#e8e8eb;--card:#f7f7f8;--ac:#1a8cff;--bad:#e5484d}
+@media (prefers-color-scheme:dark){:root{--bg:#121213;--fg:#ececee;--mute:#9a9ca2;--line:#232427;--card:#1a1a1c;--ac:#339cff;--bad:#ff6369}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+#rc{min-height:100%;display:flex;align-items:center;justify-content:center;padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+#rc[hidden]{display:none}
+.card{width:100%;max-width:420px;text-align:center}
+.logo{font-weight:800;font-size:44px;letter-spacing:-.04em;color:var(--ac);line-height:1}
+.sub{margin:6px 0 28px;color:var(--mute);font-size:14px;letter-spacing:.02em}
+h1{font-size:21px;line-height:1.3;margin:0 0 10px;letter-spacing:-.01em}
+p{margin:0 0 14px;color:var(--mute)}
+ol{text-align:left;margin:18px 0 22px;padding:0 0 0 22px;color:var(--mute)}
+ol li{margin:0 0 8px}
+ol b{color:var(--fg);font-weight:600}
+.paste{display:flex;gap:8px;margin:8px 0 0}
+input{flex:1;min-width:0;height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
+input:focus{outline:2px solid var(--ac);outline-offset:-1px;border-color:transparent}
+button{height:42px;padding:0 16px;border-radius:11px;border:0;background:var(--ac);color:#fff;font:600 14px/1 inherit;font-family:inherit;cursor:pointer}
+button.ghost{background:transparent;color:var(--mute);border:1px solid var(--line)}
+button:active{transform:scale(.98)}
+.err{color:var(--bad);font-size:13px;min-height:20px;margin:8px 0 0}
+.spin{width:28px;height:28px;margin:6px auto 18px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--ac);animation:s .8s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.bar{height:4px;border-radius:4px;background:var(--line);overflow:hidden;margin:18px auto 0;max-width:240px}
+.bar i{display:block;height:100%;width:0;background:var(--ac);transition:width .2s}
+.lock{display:inline-flex;align-items:center;gap:6px;margin-top:26px;font-size:12px;color:var(--mute)}
+.lock svg{width:13px;height:13px}
+.row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
+</style>
+</head>
+<body>
+<div id="rc"><div class="card" id="view"><div class="logo">M1</div><div class="sub">Remote control</div><div class="spin"></div></div></div>
+<div id="root"></div>
+<script>
+"use strict";
+(() => {
+  const KEY_STORE = "m1rc:key";
+  const CACHE = "m1rc-ui-v1";
+  const CHUNK = 192 * 1024;
+  const RELAY = (location.protocol === "http:" ? "ws://" : "wss://") + location.host + "/relay";
+  const view = document.getElementById("view");
+  const enc = new TextEncoder(), dec = new TextDecoder();
+
+  // ---- Small helpers ----
+  const lockIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  function show(html) {
+    document.getElementById("rc").hidden = false;
+    view.innerHTML = '<div class="logo">M1</div><div class="sub">Remote control</div>' + html + '<div class="lock">' + lockIcon + "End-to-end encrypted</div>";
+  }
+  function b64u(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function unb64u(s) {
+    const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  const store = {
+    get() { try { return localStorage.getItem(KEY_STORE) || ""; } catch { return ""; } },
+    set(v) { try { localStorage.setItem(KEY_STORE, v); } catch {} },
+    clear() { try { localStorage.removeItem(KEY_STORE); } catch {} },
+  };
+  const keyFrom = (text) => {
+    const m = String(text || "").match(/(?:^|[#&?])k=([A-Za-z0-9_-]{43})(?:$|&)/) || String(text || "").trim().match(/^([A-Za-z0-9_-]{43})$/);
+    return m ? m[1] : "";
+  };
+
+  // ---- Pairing ----
+  let key = keyFrom(location.hash);
+  if (key) {
+    store.set(key);
+    history.replaceState(null, "", location.pathname + "#/");
+  } else key = store.get();
+
+  function pairScreen(error) {
+    show(
+      "<h1>Control M1 from here</h1>" +
+        "<p>Use your chats, routines and everything else on your computer's M1 from this browser.</p>" +
+        "<ol><li>On your computer, open <b>M1</b>.</li><li>Go to <b>Settings → Remote</b> and turn on <b>Remote control</b>.</li><li>Scan the QR code with this phone, or copy the link and open it here.</li></ol>" +
+        '<form class="paste" id="pf"><input id="pl" placeholder="Or paste the link" autocomplete="off" autocapitalize="off" spellcheck="false" /><button>Connect</button></form>' +
+        '<div class="err" id="pe">' + esc(error || "") + "</div>"
+    );
+    document.getElementById("pf").onsubmit = (e) => {
+      e.preventDefault();
+      const k = keyFrom(document.getElementById("pl").value);
+      if (!k) return void (document.getElementById("pe").textContent = "That isn't an M1 remote link.");
+      store.set(k);
+      location.replace(location.pathname + "#/");
+      location.reload();
+    };
+  }
+  function forget() {
+    store.clear();
+    location.replace(location.pathname);
+  }
+
+  if (!key) return pairScreen();
+
+  // ---- Crypto: AES-256-GCM, the key from the link. The relay never sees it. ----
+  let aes;
+  const ready = (async () => {
+    aes = await crypto.subtle.importKey("raw", unb64u(key), "AES-GCM", false, ["encrypt", "decrypt"]);
+    const h = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode("m1-rc-room:" + key)));
+    return b64u(h).slice(0, 32);
+  })();
+  async function seal(obj) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: enc.encode("c2h") }, aes, enc.encode(JSON.stringify(obj))));
+    const out = new Uint8Array(12 + ct.length);
+    out.set(iv);
+    out.set(ct, 12);
+    return b64u(out);
+  }
+  async function open(d) {
+    const raw = unb64u(d);
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.subarray(0, 12), additionalData: enc.encode("h2c") }, aes, raw.subarray(12));
+    return JSON.parse(dec.decode(pt));
+  }
+
+  // ---- Relay link ----
+  let ws = null, hostUp = false, retry = 0, booted = false, badKey = false;
+  const pending = new Map(); // request id -> {resolve, reject, timer}
+  const sockets = new Map(); // socket id -> RemoteSocket
+  const parts = new Map();
+  const waiters = [];
+  let nextId = 1;
+
+  const whenUp = () => (hostUp ? Promise.resolve() : new Promise((r) => waiters.push(r)));
+  function setHost(up) {
+    hostUp = up;
+    if (up) {
+      while (waiters.length) waiters.shift()();
+      if (!booted) boot();
+    } else {
+      for (const p of pending.values()) p.reject(new Error("Lost the connection to your computer."));
+      pending.clear();
+      for (const s of [...sockets.values()]) s._closed();
+      if (!booted && !badKey) offline();
+    }
+  }
+
+  let again = null;
+  async function connect() {
+    clearTimeout(again);
+    const room = await ready;
+    if (badKey || (ws && ws.readyState <= 1)) return;
+    const sock = new WebSocket(RELAY + "?role=client&room=" + room);
+    ws = sock;
+    sock.onopen = () => (retry = 0);
+    sock.onmessage = (m) => {
+      let f;
+      try { f = JSON.parse(m.data); } catch { return; }
+      if (f.ev === "host") return setHost(Boolean(f.up));
+      if (f.x === "bad-key") return keyRejected();
+      if (typeof f.d !== "string") return;
+      let d = f.d;
+      if (f.m) {
+        const buf = parts.get(f.m) || [];
+        buf[f.i] = d;
+        parts.set(f.m, buf);
+        if (booting) progress.got(d.length);
+        if (buf.filter(Boolean).length < f.n) return;
+        parts.delete(f.m);
+        d = buf.join("");
+      } else if (booting) progress.got(d.length);
+      open(d).then(onMessage, () => {});
+    };
+    sock.onclose = () => {
+      if (ws !== sock) return;
+      ws = null;
+      setHost(false);
+      retry = Math.min(retry + 1, 5);
+      again = setTimeout(connect, 500 * 2 ** retry);
+    };
+  }
+
+  async function sendMsg(obj) {
+    await whenUp();
+    const d = await seal(obj);
+    if (!ws || ws.readyState !== 1) throw new Error("Lost the connection to your computer.");
+    if (d.length <= CHUNK) return ws.send(JSON.stringify({ d }));
+    const m = Math.random().toString(36).slice(2, 10);
+    const n = Math.ceil(d.length / CHUNK);
+    for (let i = 0; i < n; i++) ws.send(JSON.stringify({ d: d.slice(i * CHUNK, (i + 1) * CHUNK), m, i, n }));
+  }
+
+  function onMessage(msg) {
+    if (msg.t === "res") {
+      const p = pending.get(msg.id);
+      if (!p) return;
+      pending.delete(msg.id);
+      clearTimeout(p.timer);
+      p.resolve(msg);
+    } else if (msg.t === "opened") sockets.get(msg.s)?._opened();
+    else if (msg.t === "ev") sockets.get(msg.s)?._message(msg.data);
+    else if (msg.t === "shut") sockets.get(msg.s)?._closed();
+  }
+
+  function keyRejected() {
+    if (badKey) return;
+    badKey = true;
+    for (const p of pending.values()) p.reject(new Error("This link no longer works."));
+    pending.clear();
+    store.clear();
+    if (ws) { const s = ws; ws = null; s.onclose = null; s.close(); }
+    pairScreen("That link no longer works. Scan the new code in M1's Settings → Remote.");
+  }
+
+  // ---- fetch() for the app ----
+  async function bodyBytes(body) {
+    if (body == null) return null;
+    if (typeof body === "string") return enc.encode(body);
+    if (body instanceof Blob) return new Uint8Array(await body.arrayBuffer());
+    if (body instanceof ArrayBuffer) return new Uint8Array(body);
+    if (ArrayBuffer.isView(body)) return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+    return enc.encode(String(body));
+  }
+  async function rcFetch(input, init) {
+    init = init || {};
+    const path = typeof input === "string" ? input : input.url;
+    const url = new URL(path, location.href);
+    const h = {};
+    new Headers(init.headers || {}).forEach((v, k) => (h[k] = v));
+    const bytes = await bodyBytes(init.body);
+    if (!hostUp) throw new TypeError("Your computer isn't connected.");
+    const id = nextId++;
+    const res = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new TypeError("Your computer didn't answer."));
+      }, 600000);
+      pending.set(id, { resolve, reject, timer });
+      sendMsg({ t: "req", id, m: (init.method || "GET").toUpperCase(), p: url.pathname + url.search, h, b: bytes ? b64u(bytes) : "" }).catch((e) => {
+        pending.delete(id);
+        clearTimeout(timer);
+        reject(e);
+      });
+    });
+    const status = res.s >= 200 && res.s <= 599 ? res.s : 502;
+    const nobody = status === 204 || status === 205 || status === 304;
+    return new Response(nobody ? null : unb64u(res.b || ""), { status, headers: res.h || {} });
+  }
+
+  // ---- WebSocket for the app's live updates ----
+  class RemoteSocket {
+    constructor() {
+      this.readyState = 0;
+      this.onopen = this.onmessage = this.onclose = this.onerror = null;
+      this.sid = Math.random().toString(36).slice(2, 10);
+      sockets.set(this.sid, this);
+      if (!hostUp) {
+        // Let the app's own retry loop try again shortly.
+        setTimeout(() => this._closed(), 1500);
+        return;
+      }
+      sendMsg({ t: "open", s: this.sid }).catch(() => this._closed());
+    }
+    _opened() {
+      if (this.readyState !== 0) return;
+      this.readyState = 1;
+      this.onopen?.({ type: "open" });
+    }
+    _message(data) {
+      if (this.readyState === 1) this.onmessage?.({ type: "message", data });
+    }
+    _closed() {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      sockets.delete(this.sid);
+      this.onclose?.({ type: "close", code: 1006, reason: "" });
+    }
+    send() {}
+    close() {
+      if (this.readyState === 3) return;
+      sendMsg({ t: "shut", s: this.sid }).catch(() => {});
+      this._closed();
+    }
+  }
+
+  // ---- Attachments open as blobs ----
+  function openFile(path) {
+    const w = window.open("", "_blank");
+    rcFetch(path)
+      .then((r) => r.blob())
+      .then((b) => {
+        const u = URL.createObjectURL(b);
+        if (w) w.location.href = u;
+        else location.href = u;
+      })
+      .catch(() => w && w.close());
+  }
+
+  // ---- Screens ----
+  function offline() {
+    show(
+      "<h1>Waiting for your computer</h1>" +
+        '<div class="spin"></div>' +
+        "<p>Make sure your computer is awake, M1 is open, and Settings → Remote → Remote control is on. This page connects by itself.</p>" +
+        '<div class="row"><button class="ghost" id="fg">Use a different link</button></div>'
+    );
+    document.getElementById("fg").onclick = forget;
+  }
+
+  let booting = false;
+  const progress = {
+    total: 0, done: 0,
+    got(n) { this.done += n; const el = document.getElementById("pb"); if (el && this.total) el.style.width = Math.min(100, (this.done / this.total) * 100) + "%"; },
+  };
+
+  // ---- Load M1's own UI from the computer, keep it cached by file name ----
+  async function cached(path) {
+    const req = new Request(location.origin + "/__m1" + path);
+    let c = null;
+    try { c = await caches.open(CACHE); const hit = await c.match(req); if (hit) return hit; } catch {}
+    const res = await rcFetch(path);
+    if (!res.ok) throw new Error("Couldn't load " + path);
+    const blob = await res.blob();
+    const out = new Response(blob, { headers: { "content-type": res.headers.get("content-type") || "" } });
+    try { if (c) await c.put(req, out.clone()); } catch {}
+    return out;
+  }
+
+  async function boot() {
+    if (booted || booting) return;
+    booting = true;
+    show('<h1>Loading M1…</h1><div class="bar"><i id="pb"></i></div>');
+    try {
+      const html = await (await rcFetch("/")).text();
+      const js = (html.match(/<script[^>]+src="(\/assets\/[^"]+\.js)"/) || [])[1];
+      const cssFiles = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="(\/assets\/[^"]+\.css)"/g)].map((m) => m[1]);
+      if (!js) throw new Error("M1 on your computer is too old for remote control. Update it, then try again.");
+      progress.total = 1800000;
+      const [jsText, ...cssTexts] = await Promise.all([cached(js).then((r) => r.text()), ...cssFiles.map((f) => cached(f).then((r) => r.text()))]);
+      // Fonts (KaTeX math) come from the computer too, as blob URLs.
+      const fonts = new Set();
+      for (const css of cssTexts) for (const m of css.matchAll(/url\((\/assets\/[^)]+\.woff2)\)/g)) fonts.add(m[1]);
+      const blobs = {};
+      await Promise.all([...fonts].map(async (f) => { try { blobs[f] = URL.createObjectURL(await (await cached(f)).blob()); } catch {} }));
+      for (const css of cssTexts) {
+        const style = document.createElement("style");
+        style.textContent = css.replace(/url\((\/assets\/[^)]+\.woff2)\)/g, (m, f) => (blobs[f] ? "url(" + blobs[f] + ")" : m));
+        document.head.appendChild(style);
+      }
+      // Drop UI files from older versions.
+      try {
+        const keep = new Set([js, ...cssFiles, ...fonts].map((p) => location.origin + "/__m1" + p));
+        const c = await caches.open(CACHE);
+        for (const r of await c.keys()) if (!keep.has(r.url)) c.delete(r);
+      } catch {}
+
+      const meta = document.createElement("meta");
+      meta.name = "m1-token";
+      meta.content = "remote";
+      document.head.appendChild(meta);
+      window.__M1_REMOTE__ = { fetch: rcFetch, WebSocket: RemoteSocket, openFile, forget };
+      if (!location.hash.startsWith("#/")) history.replaceState(null, "", location.pathname + "#/");
+      booted = true;
+      booting = false;
+      document.getElementById("rc").hidden = true;
+      await import(URL.createObjectURL(new Blob([jsText], { type: "text/javascript" })));
+    } catch (e) {
+      booting = false;
+      if (badKey) return;
+      show('<h1>Couldn\'t load M1</h1><p>' + esc(e.message || e) + '</p><div class="row"><button id="ry">Try again</button><button class="ghost" id="fg">Use a different link</button></div>');
+      document.getElementById("ry").onclick = () => location.reload();
+      document.getElementById("fg").onclick = forget;
+    }
+  }
+
+  show('<h1>Connecting…</h1><div class="spin"></div>');
+  connect();
+  // Phones freeze background tabs; reconnect as soon as the page is back.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !badKey && (!ws || ws.readyState > 1)) { retry = 0; connect(); }
+  });
+})();
+</script>
+</body>
+</html>

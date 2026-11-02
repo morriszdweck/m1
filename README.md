@@ -10,6 +10,7 @@ A private AI agent for your Mac or Linux computer that runs **Spark X2.6 4B** en
 - **Choose project**: the button under the message box ties a chat to one folder. The agent then works only there: file tools refuse paths outside it, and shell commands run in a sandbox that can write only inside the folder and can't read the rest of your home folder (`sandbox-exec` on macOS, [bubblewrap](https://github.com/containers/bubblewrap) on Linux; without bubblewrap, commands that name a path outside the folder are refused and every command asks you first). Recent projects are one click away.
 - **Memory and For You**: it learns small facts about you, uses only the relevant ones (to keep prompts short) and suggests ideas based on them.
 - **Routines** you can run with one click or on a schedule, and an **Activity** log of every action and who approved it.
+- **Remote control** at [rc.mincoffical.codes](https://rc.mincoffical.codes): turn it on in Settings → Remote, scan the QR code, and use your chats, the model, routines and the rest from your phone or any browser. M1 dials out to a relay and everything is end-to-end encrypted (AES-256-GCM) with a key that only lives in the pairing link, so the relay sees scrambled data. Nothing on your computer listens to the network.
 - **One-click downloads** inside the app, with a choice of model size (Smaller, Balanced, Best, or any GGUF quant in Settings). The app still routes each message itself.
 
 Everything stays on your computer. The only network traffic is the one-time downloads and web searches you ask for.
@@ -86,6 +87,7 @@ browser ──HTTP/WebSocket──▶ server/ (Node, 127.0.0.1:8270)
 - `server/agent.js` runs the agent loop. Spark writes tool calls in its native `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value>` format and its thinking in `<think>` tags (`server/think.js`); the effort slider goes to its chat template as `enable_thinking` and `reasoning_effort` (Instant = off, Medium = low, High = high); `server/toolparser.js` reads that and the other common forms.
 - `server/models.js` reads Hugging Face links, finds and groups GGUF files, picks a size for this computer and checks a model's header before it runs.
 - `server/prompt.js` keeps prompts small: a short system prompt, only relevant memories, and older tool results trimmed to fit the context budget.
+- `server/remote.js` is remote control: it keeps an outbound WebSocket to the relay (`relay/rc_relay.py`) and replays encrypted requests from paired browsers against the local server. `relay/site/` is the page at rc.mincoffical.codes, which loads the app from your computer through that tunnel.
 - `web/` is a React app built with Vite into `web/dist`, which the server hosts.
 
 The server only accepts requests from this computer, from its own page, carrying a token that changes every launch.

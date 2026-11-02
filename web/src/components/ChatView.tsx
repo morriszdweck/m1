@@ -18,7 +18,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { api, fileURL } from "../api";
+import { api, fileURL, openFile } from "../api";
 import { errorToast, go, modelsReady, useStore } from "../store";
 import type { Attachment, Chat, Message } from "../types";
 import { chatMarkdown, cx, download, duration, greeting } from "../util";
@@ -185,7 +185,7 @@ function Conversation({ chat }: { chat: Chat }) {
 
 function AttachmentView({ file }: { file: Attachment }) {
   return (
-    <a className="msg-file" href={fileURL(file.id)} target="_blank" rel="noreferrer">
+    <a className="msg-file" href={fileURL(file.id)} target="_blank" rel="noreferrer" onClick={(e) => openFile(e, file.id)}>
       <FileText size={15} />
       <span>{file.name}</span>
     </a>

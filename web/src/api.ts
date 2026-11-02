@@ -3,6 +3,19 @@
 
 export const token = document.querySelector<HTMLMetaElement>('meta[name="m1-token"]')?.content ?? "";
 
+/** Set by rc.mincoffical.codes when this UI runs remotely: requests and the live socket go through the encrypted relay. */
+type Remote = { fetch: typeof fetch; WebSocket: new (path: string) => WebSocket; openFile: (path: string) => void };
+const remote = (window as unknown as { __M1_REMOTE__?: Remote }).__M1_REMOTE__;
+export const isRemote = Boolean(remote);
+export const rawFetch: typeof fetch = remote ? remote.fetch : (input, init) => fetch(input, init);
+export const openSocket = (path: string): WebSocket => (remote ? new remote.WebSocket(path) : new WebSocket(socketURL(path)));
+/** Opens an attachment. Remotely it can't be a plain link, since the file lives on the computer. */
+export function openFile(e: { preventDefault(): void }, id: string) {
+  if (!remote) return;
+  e.preventDefault();
+  remote.openFile(`/api/uploads/${id}`);
+}
+
 export class ApiError extends Error {}
 
 async function request(method: string, path: string, body?: unknown, init: RequestInit = {}): Promise<Response> {
@@ -12,7 +25,7 @@ async function request(method: string, path: string, body?: unknown, init: Reque
     headers["Content-Type"] = "application/json";
     payload = JSON.stringify(body);
   }
-  const res = await fetch(path, { ...init, method, headers, body: payload });
+  const res = await rawFetch(path, { ...init, method, headers, body: payload });
   if (res.status === 401) {
     // The server restarted with a new token.
     location.reload();

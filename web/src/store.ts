@@ -1,8 +1,8 @@
 // App state, kept in sync with the server over one WebSocket.
 
 import { create } from "zustand";
-import { socketURL, token } from "./api";
-import type { ActivityEntry, Chat, Idea, Part, Reminder, Routine, Settings, Snapshot, Step, Update } from "./types";
+import { isRemote, openSocket, rawFetch, token } from "./api";
+import type { ActivityEntry, Chat, Idea, Part, Reminder, RemoteInfo, Routine, Settings, Snapshot, Step, Update } from "./types";
 
 export type Toast = { id: number; text: string; tone?: "error" | "info" };
 export type Route =
@@ -32,6 +32,7 @@ type State = {
   reminders: Reminder[];
   dataDir: string;
   update: Update | null;
+  remote?: RemoteInfo;
   route: Route;
   settingsOpen: string | null;
   sidebarOpen: boolean;
@@ -144,6 +145,7 @@ type Event =
   | { type: "parts"; parts: Part[]; busy: boolean; guardianWanted: boolean }
   | { type: "settings"; settings: Settings }
   | { type: "update"; update: Update }
+  | { type: "remote"; remote: RemoteInfo }
   | { type: "memory"; facts: string[] }
   | { type: "ideas"; ideas: { at: number; items: Idea[] } }
   | { type: "routines"; routines: Routine[] }
@@ -181,6 +183,9 @@ function onEvent(e: Event) {
     case "update":
       set({ update: e.update });
       break;
+    case "remote":
+      set({ remote: e.remote });
+      break;
     case "memory":
       set({ memory: e.facts });
       break;
@@ -210,7 +215,7 @@ function onEvent(e: Event) {
 }
 
 export function connect() {
-  socket = new WebSocket(socketURL("/ws"));
+  socket = openSocket("/ws");
   socket.onopen = () => {
     retry = 0;
     set({ connected: true });
@@ -227,7 +232,7 @@ export function connect() {
 /** After a restart (an update, say) the server has a new token, and only a reload picks it up. */
 async function reconnect() {
   try {
-    const res = await fetch("/api/ping", { headers: { "X-M1-Token": token } });
+    const res = await rawFetch("/api/ping", { headers: { "X-M1-Token": token } });
     if (res.status === 401) return location.reload();
   } catch {}
   connect();
@@ -239,7 +244,11 @@ function noteUpdated(update: Update | undefined) {
   try {
     const seen = Number(sessionStorage.getItem("la:build"));
     sessionStorage.setItem("la:build", String(update.build));
-    if (seen && update.build > seen) toast("M1 updated itself.");
+    // Remotely the page holds the old version's UI: load the new one.
+    if (seen && update.build > seen) {
+      if (isRemote) location.reload();
+      else toast("M1 updated itself.");
+    }
   } catch {}
 }
 

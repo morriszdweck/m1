@@ -16,6 +16,7 @@ import { cancelReminder, reminderList } from "./tools.js";
 import { forget as forgetProject, listFolders, pickFolder, projectFolder, recentProjects, sandboxKind } from "./project.js";
 import { MAX_UPLOAD, NotText, uploads } from "./uploads.js";
 import { BUILD, updater } from "./updater.js";
+import { info as remoteInfo, resetRemote, setRemote, startRemote } from "./remote.js";
 
 const PORT = Number(process.env.M1_PORT ?? 8270);
 const HOST = "127.0.0.1";
@@ -120,6 +121,7 @@ function snapshot() {
     reminders: reminderList(),
     dataDir: DATA,
     update: updater.snapshot,
+    remote: remoteInfo(),
   };
 }
 
@@ -245,6 +247,11 @@ route("POST", "/api/routines", async (req) => {
 route("PATCH", "/api/routines/([\\w-]+)", async (req, [id]) => routineStore.update(id, await json(req)) ?? notFound());
 route("DELETE", "/api/routines/([\\w-]+)", (_, [id]) => routineStore.remove(id));
 route("POST", "/api/routines/([\\w-]+)/run", (_, [id]) => routineStore.run(id) ?? notFound());
+
+// Remote control from rc.mincoffical.codes. A paired browser can't change these (remote.js blocks them).
+route("GET", "/api/remote", () => remoteInfo());
+route("POST", "/api/remote", async (req) => setRemote((await json(req))?.enabled));
+route("POST", "/api/remote/reset", () => resetRemote());
 
 route("DELETE", "/api/reminders/([\\w-]+)", (_, [id]) => cancelReminder(id));
 route("DELETE", "/api/activity", () => agent.clearActivity());
@@ -416,6 +423,7 @@ server.listen(PORT, HOST, () => {
     .finally(() => backends.resume());
   memory.tidy();
   updater.start(shutdown);
+  startRemote(PORT, TOKEN);
 });
 
 let stopping = false;

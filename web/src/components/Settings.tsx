@@ -1,8 +1,9 @@
 // Settings, the one-click downloads, and the first-run setup screen.
 
-import { useState } from "react";
-import { Bell, Brain, Check, Cpu, Download, FolderOpen, Globe, Link2, Mic, Monitor, Moon, Play, RotateCcw, Shield, SlidersHorizontal, Square, Sun, Trash2, User } from "lucide-react";
-import { api } from "../api";
+import { useMemo, useState } from "react";
+import qrcode from "qrcode-generator";
+import { Bell, Brain, Check, Copy, Cpu, Download, FolderOpen, Globe, Link2, Mic, Monitor, Moon, Play, RotateCcw, Shield, SlidersHorizontal, Smartphone, Square, Sun, Trash2, User } from "lucide-react";
+import { api, isRemote } from "../api";
 import { errorToast, toast, useStore } from "../store";
 import type { ModelResolution, Part, Settings as SettingsType } from "../types";
 import { DEVICE, IS_MAC, cx, timeAgo } from "../util";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "general", label: "General", icon: <User size={15} /> },
   { id: "safety", label: "Safety", icon: <Shield size={15} /> },
   { id: "downloads", label: "Downloads", icon: <Download size={15} /> },
+  { id: "remote", label: "Remote", icon: <Smartphone size={15} /> },
   { id: "advanced", label: "Advanced", icon: <SlidersHorizontal size={15} /> },
 ];
 
@@ -48,6 +50,7 @@ export function SettingsModal() {
           {tab === "general" && <General settings={settings} />}
           {tab === "safety" && <Safety settings={settings} />}
           {tab === "downloads" && <Downloads />}
+          {tab === "remote" && <RemoteControl />}
           {tab === "advanced" && <Advanced settings={settings} />}
         </div>
       </div>
@@ -433,9 +436,83 @@ function Downloads() {
           <PartRow key={p.id} part={p} />
         ))}
       </div>
-      <button className="btn" onClick={() => api("POST", "/api/reveal").catch(errorToast)}>
-        <FolderOpen size={14} /> {IS_MAC ? "Show files in Finder" : "Show files"}
-      </button>
+      {!isRemote && (
+        <button className="btn" onClick={() => api("POST", "/api/reveal").catch(errorToast)}>
+          <FolderOpen size={14} /> {IS_MAC ? "Show files in Finder" : "Show files"}
+        </button>
+      )}
+    </>
+  );
+}
+
+/** A QR code of the pairing link, drawn as one SVG path. */
+function QR({ text }: { text: string }) {
+  const d = useMemo(() => {
+    const qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    const n = qr.getModuleCount();
+    let path = "";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) path += `M${c + 2} ${r + 2}h1v1h-1z`;
+    return { path, size: n + 4 };
+  }, [text]);
+  return (
+    <svg className="remote-qr" viewBox={`0 0 ${d.size} ${d.size}`} shapeRendering="crispEdges" role="img" aria-label="QR code of the remote control link">
+      <rect width={d.size} height={d.size} fill="#fff" />
+      <path d={d.path} fill="#000" />
+    </svg>
+  );
+}
+
+/** Remote control from rc.mincoffical.codes: the switch, the pairing link and its QR code. */
+function RemoteControl() {
+  const remote = useStore((s) => s.remote);
+  if (isRemote)
+    return (
+      <>
+        <p className="muted">You're controlling M1 remotely. Everything is end-to-end encrypted between this browser and your {DEVICE}.</p>
+        <p className="muted">To turn remote control off or make a new link, use Settings → Remote on the {DEVICE} itself.</p>
+      </>
+    );
+  if (!remote) return null;
+  const set = (enabled: boolean) => api("POST", "/api/remote", { enabled }).catch(errorToast);
+  const status = { off: "Off.", connecting: "Connecting to the relay…", online: remote.devices ? `On. ${remote.devices} device${remote.devices === 1 ? "" : "s"} connected.` : "On. Waiting for a device." }[remote.status];
+  return (
+    <>
+      <Row title="Remote control" detail={`Use M1 from your phone or any browser at rc.mincoffical.codes, while this ${DEVICE} is on and M1 is open.`}>
+        <Toggle checked={remote.enabled} onChange={set} />
+      </Row>
+      {remote.enabled && (
+        <>
+          <Row title="Status" detail={status}>
+            <StatusDot tone={remote.status === "online" ? "ok" : "busy"} />
+          </Row>
+          <div className="remote-pair">
+            <QR text={remote.link} />
+            <div className="remote-pair-copy">
+              <h4>Pair a device</h4>
+              <p className="muted">Scan the code with your phone's camera, or open the link in any browser. Anyone with the link can use M1, so keep it to yourself.</p>
+              <div className="remote-actions">
+                <button
+                  className="btn primary"
+                  onClick={() => navigator.clipboard.writeText(remote.link).then(() => toast("Link copied."), errorToast)}
+                >
+                  <Copy size={14} /> Copy link
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    if (confirm("Make a new link? Devices paired with the old one stop working.")) api("POST", "/api/remote/reset").catch(errorToast);
+                  }}
+                >
+                  <RotateCcw size={14} /> New link
+                </button>
+              </div>
+            </div>
+          </div>
+          <p className="muted small">The link holds an encryption key that never reaches the relay, so the relay only passes along scrambled data.</p>
+        </>
+      )}
     </>
   );
 }
