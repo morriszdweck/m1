@@ -345,7 +345,7 @@ export function Memory() {
         )
       }
     >
-      <p className="page-lead">Things M1 remembers about you. It learns from your chats and uses only what's relevant, so replies stay quick.</p>
+      <p className="page-lead">Things M1 remembers about you across chats. It learns from what you tell it; say “forget that…” in any chat, or edit them here.</p>
       <div className="add-row">
         <input value={adding} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Add something, like “I live in Lisbon” or “I prefer short answers”" />
         <button className="btn primary" onClick={add} disabled={!adding.trim()}>

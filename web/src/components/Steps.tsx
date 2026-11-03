@@ -42,6 +42,7 @@ const ICONS: Record<string, typeof Terminal> = {
   browser_type: Keyboard,
   remember: Brain,
   recall: Brain,
+  forget: Brain,
   clipboard: Clipboard,
   set_clipboard: ClipboardPaste,
   reminder: Bell,

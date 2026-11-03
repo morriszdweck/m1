@@ -93,7 +93,8 @@ export const DEFAULTS = {
   autoUpdate: true,
   workspace: HOME,
   guardianThreshold: 0.5,
-  contextBudget: 6000,
+  contextBudget: 12000,
+  contextV: 2,
   toolOutputLimit: 1200,
   temperature: 1.0,
   reasoningEffort: "medium", // instant | medium | high
@@ -130,6 +131,11 @@ if ("temperatureV" in saved) {
 if (!saved.personalityV) {
   if (saved.personality === "friendly") delete saved.personality;
   saved.personalityV = 2;
+}
+// Build 24 doubled how much of a chat the model reads (6000 → 12000 tokens), so long chats stay straight.
+if (!saved.contextV) {
+  if (saved.contextBudget === 6000) delete saved.contextBudget;
+  saved.contextV = 2;
 }
 // Drop saved choices that no longer exist (e.g. an old brain's size or effort level) and retired keys.
 for (const [key, allowed] of Object.entries(CHOICES)) if (key in saved && !allowed.includes(saved[key])) delete saved[key];

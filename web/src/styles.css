@@ -1342,6 +1342,22 @@ input[type="range"] {
   font-size: 13px;
   font-style: italic;
 }
+.msg-memory {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  color: var(--fg-3);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.msg-memory:hover {
+  color: var(--fg-2);
+}
 .msg-error {
   display: flex;
   flex-wrap: wrap;

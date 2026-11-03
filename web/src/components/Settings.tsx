@@ -27,7 +27,7 @@ const TABS = [
   { id: "safety", label: "Safety", icon: <Shield size={15} />, color: "#34c759", note: "What M1 may do without asking" },
   { id: "downloads", label: "Downloads", icon: <Download size={15} />, color: "#0a84ff", note: "Models and helpers" },
   { id: "remote", label: "Remote", icon: <Smartphone size={15} />, color: "#ff9f0a", note: "Use M1 from your phone" },
-  { id: "advanced", label: "Advanced", icon: <SlidersHorizontal size={15} />, color: "#5e5ce6", note: "Brain model, memory, creativity" },
+  { id: "advanced", label: "Advanced", icon: <SlidersHorizontal size={15} />, color: "#5e5ce6", note: "Brain model, chat history, creativity" },
 ];
 
 /**
@@ -657,8 +657,8 @@ function Advanced({ settings }: { settings: SettingsType }) {
     <>
       <h3>Advanced</h3>
       <EverydayModel />
-      <Row title="Memory for each chat" detail="How many tokens of the conversation go to the model. Smaller is faster.">
-        <SavedInput type="number" width={110} value={String(settings.contextBudget)} onSave={num("contextBudget", 1000, 14000)} />
+      <Row title="Chat history it reads" detail="How many tokens of a chat the model reads. Older messages past this are hidden from it. Larger keeps long chats straight; smaller is faster.">
+        <SavedInput type="number" width={110} value={String(settings.contextBudget)} onSave={num("contextBudget", 1000, 16000)} />
       </Row>
       <Row title="Tool output kept" detail="Characters of each tool result the model sees.">
         <SavedInput type="number" width={110} value={String(settings.toolOutputLimit)} onSave={num("toolOutputLimit", 500, 20000)} />
@@ -699,6 +699,9 @@ export function Setup() {
   const [name, setName] = useState(settings?.userName ?? "");
   const installing = busy || parts.some((p) => p.status === "installing");
   const failed = parts.filter((p) => p.status === "failed");
+  // A helper that failed to start (say its port is taken) mustn't hide the welcome screen:
+  // retrying it alone would never get the brain, so setup could never finish.
+  const stuck = failed.some((p) => p.id === "engine" || p.id === "small");
 
   const go = async () => {
     try {
@@ -711,7 +714,7 @@ export function Setup() {
     }
   };
 
-  if (installing || failed.length) {
+  if (installing || stuck) {
     const shown = parts.filter((p) => p.status !== "missing" || p.queued);
     const total = shown.reduce((sum, p) => sum + p.bytes, 0);
     const done = shown.reduce(

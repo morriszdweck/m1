@@ -372,18 +372,39 @@ export const TOOLS = [
   },
   {
     name: "remember",
-    desc: "save a lasting fact about the user",
-    params: [p("fact", "short fact")],
+    desc: "save a lasting fact about the user, or change one you saved",
+    params: [
+      p("fact", "one short fact about the user in the third person, like 'Has a dog named Rex.'"),
+      p("replaces", "the saved note this fact changes, if any", { required: false }),
+    ],
     kind: "safe",
     label: (a) => `Remembered “${short(a.fact)}”`,
-    run: (a) => (memory.add(a.fact) ? "Saved." : "Already known."),
+    run: (a) => {
+      const r = memory.add(a.fact, { replaces: a.replaces });
+      if (r.why) throw new Error(`Not saved: ${r.why} Save one short fact about the user, like "Made M1." or "Has a sister named Ana."`);
+      if (r.known) return `Already saved: "${r.fact}"`;
+      return r.replaced ? `Saved "${r.fact}" in place of "${r.replaced}".` : `Saved "${r.fact}".`;
+    },
+  },
+  {
+    name: "forget",
+    desc: "delete a saved note about the user",
+    params: [p("fact", "the note, or words from it")],
+    kind: "safe",
+    label: (a) => `Forgot “${short(a.fact)}”`,
+    run: (a) => {
+      const gone = memory.forget(String(a.fact ?? ""));
+      return gone ? `Deleted "${gone}".` : "No saved note matches that.";
+    },
   },
   {
     name: "recall",
-    desc: "search what you know about the user",
+    desc: "search older notes about the user",
     params: [p("query", "topic")],
     kind: "safe",
     free: true,
+    // Small memories are already in the prompt whole.
+    available: () => !memory.fitsInPrompt,
     label: (a) => `Recalled “${short(a.query)}”`,
     run: (a) => memory.search(String(a.query ?? ""), 8).join("\n") || "Nothing saved about that.",
   },

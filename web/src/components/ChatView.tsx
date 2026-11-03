@@ -4,6 +4,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowDown,
+  Brain,
   Check,
   ChevronRight,
   Copy,
@@ -361,6 +362,11 @@ function AssistantMessage({ chat, message, last, busy }: { chat: Chat; message: 
         </div>
       )}
       {text && <Markdown streaming={streaming}>{text}</Markdown>}
+      {message.memory?.length ? (
+        <button className="msg-memory" title={message.memory.join("\n")} onClick={() => go("#/memory")}>
+          <Brain size={13} /> Memory updated
+        </button>
+      ) : null}
       {message.interrupted && <div className="msg-note">You interrupted.</div>}
       {message.status === "stopped" && <div className="msg-note">Stopped.</div>}
       {message.status === "error" && (

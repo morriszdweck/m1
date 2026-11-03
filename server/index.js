@@ -218,13 +218,17 @@ backends.readyHooks.push((id) => {
   updateSettings({ approvalMode: "approveForMe" });
 });
 
+// A fact someone types goes through the same cleaning as the model's ("I live in Lisbon" → "Lives in Lisbon.").
+const factError = (r) => {
+  if (r.why) throw new HttpError(400, `That wasn't saved: ${r.why.replace("I, which isn't the user", "I in the middle")} Try one short fact, like “I live in Lisbon”.`);
+};
 route("POST", "/api/memory", async (req) => {
   const { fact } = await json(req);
-  memory.add(fact);
+  factError(memory.add(fact));
   return memory.facts;
 });
 route("PATCH", "/api/memory/(\\d+)", async (req, [i]) => {
-  memory.update(Number(i), (await json(req)).fact);
+  factError(memory.update(Number(i), (await json(req)).fact));
   return memory.facts;
 });
 route("DELETE", "/api/memory/(\\d+)", (_, [i]) => {

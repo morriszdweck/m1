@@ -10,14 +10,22 @@
         --bg: #f3f3f4;
         --fg: #1a1c1f;
         --fg-3: #8b8f96;
+        --accent: #0a7ae6;
         --danger: #e5484d;
+        --btn: #1a1c1f;
+        --btn-fg: #fcfcfc;
+        --line: rgba(0, 0, 0, 0.12);
       }
       @media (prefers-color-scheme: dark) {
         :root {
           --bg: #0a0a0b;
           --fg: #fcfcfc;
           --fg-3: #7d8087;
+          --accent: #55a8ff;
           --danger: #ff6369;
+          --btn: #fcfcfc;
+          --btn-fg: #1a1c1f;
+          --line: rgba(255, 255, 255, 0.14);
         }
       }
       html,
@@ -31,35 +39,39 @@
         background: var(--bg);
         color: var(--fg);
         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-        -webkit-app-region: drag;
         user-select: none;
+      }
+      /* Only this strip moves the window, so the rest of the page always takes clicks. */
+      .titlebar {
+        position: fixed;
+        inset: 0 0 auto 0;
+        height: 38px;
+        -webkit-app-region: drag;
       }
       main {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 14px;
-        max-width: 420px;
+        gap: 16px;
+        max-width: 440px;
         padding: 24px;
         text-align: center;
       }
-      svg {
-        width: 64px;
-        height: 64px;
-      }
-      h1 {
-        margin: 0;
-        font-size: 22px;
-        font-weight: 600;
-        letter-spacing: -0.02em;
+      .logo {
+        color: var(--accent);
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1;
       }
       #status {
         min-height: 20px;
         color: var(--fg-3);
       }
-      #status.bad {
+      .bad #status {
         color: var(--danger);
         user-select: text;
+        cursor: text;
       }
       .spinner {
         width: 18px;
@@ -69,7 +81,7 @@
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
       }
-      .done .spinner {
+      .bad .spinner {
         display: none;
       }
       @keyframes spin {
@@ -77,30 +89,55 @@
           transform: rotate(360deg);
         }
       }
+      .actions {
+        display: none;
+        gap: 8px;
+      }
+      .bad .actions {
+        display: flex;
+      }
+      button {
+        height: 34px;
+        padding: 0 16px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: var(--btn);
+        background: var(--btn);
+        color: var(--btn-fg);
+      }
+      button[hidden] {
+        display: none;
+      }
     </style>
   </head>
   <body>
+    <div class="titlebar"></div>
     <main>
-      <svg viewBox="0 0 64 64" aria-hidden="true">
-        <defs>
-          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#5ab4ff" />
-            <stop offset="1" stop-color="#0169cc" />
-          </linearGradient>
-        </defs>
-        <rect width="64" height="64" rx="16" fill="url(#g)" />
-        <path d="M32 13c7 9 13 16 13 23.5a13 13 0 0 1-26 0C19 29 25 22 32 13z" fill="#fff" />
-      </svg>
-      <h1>M1</h1>
+      <div class="logo" aria-label="M1">M1</div>
       <div class="spinner"></div>
       <div id="status">Starting…</div>
+      <div class="actions">
+        <button class="primary" id="retry">Try again</button>
+        <button id="log" hidden>Show log</button>
+      </div>
     </main>
     <script>
       const status = document.getElementById("status");
+      // The app watches the address for these, since this page has no other way to reach it.
+      const ask = (what) => (location.hash = `${what}-${Date.now()}`);
+      document.getElementById("retry").onclick = () => ask("retry");
+      document.getElementById("log").onclick = () => ask("log");
       window.say = (text) => (status.textContent = text);
-      window.failed = (text) => {
-        document.body.classList.add("done");
-        status.classList.add("bad");
+      window.failed = (text, hasLog) => {
+        document.body.classList.add("bad");
+        document.getElementById("log").hidden = !hasLog;
         status.textContent = text;
       };
     </script>

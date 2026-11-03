@@ -344,7 +344,17 @@ export const agent = {
     if (backends.running("small")) {
       const firstReply = chat.messages.filter((m) => m.role === "assistant").length === 1;
       if (firstReply && !chat.named) this.autoTitle(chat, request.content || reply.content).catch(() => {});
-      if (request.content) memory.learnFrom(request.content).catch(() => {});
+      // A reply that already saved or deleted a note did what the user asked; learning again would duplicate it.
+      const handled = reply.steps.some((s) => ["remember", "forget"].includes(s.tool) && s.status === "done");
+      if (request.content && !handled)
+        memory
+          .learnFrom(request.content)
+          .then((changes) => {
+            if (!changes.length || !chat.messages.includes(reply)) return;
+            reply.memory = changes.map((c) => c.fact);
+            emitChat(chat);
+          })
+          .catch(() => {});
     }
   },
 

@@ -31,6 +31,8 @@ export type Message = {
   stats?: { ms: number; tokens: number; tps: number };
   thinking?: string;
   thinkingMs?: number;
+  /** Facts M1 picked up from the user's message after this reply. */
+  memory?: string[];
 };
 
 export type Chat = {
