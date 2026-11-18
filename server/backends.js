@@ -5,7 +5,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { DATA, DEVICE, DIRS, IS_MAC, QUANTS, ROOT, bus, bytesText, load, run, save, settings, sleep } from "./core.js";
+import { DATA, DEVICE, DIRS, IS_MAC, MODELS, ROOT, bus, bytesText, load, run, save, settings, sleep } from "./core.js";
+import { BRAIN, BRAINS, effortPlan, quantsFor } from "./brains.js";
 import { hfHeaders, modelError, probeGGUF, resolveHfModel } from "./models.js";
 import { download } from "./download.js";
 import { linuxGPU, listeners } from "./platform.js";
@@ -19,8 +20,8 @@ export const PARTS = {
   },
   small: {
     title: "Brain",
-    detail: "Spark X2.6 4B. Thinks as hard as you ask, writes and takes actions.",
-    size: "3.5 GB",
+    detail: BRAINS[BRAIN].detail,
+    size: BRAIN === "loop" ? "5.8 GB" : "3.5 GB",
     port: Number(process.env.M1_MODEL_PORT ?? 8280), // overridable so a test copy can run beside the real one
   },
   guardian: {
@@ -47,12 +48,27 @@ export const PARTS = {
 };
 export const ORDER = ["engine", "small", "guardian", "dictation", "browser"];
 
-// Each model comes in several sizes (quants); settings pick which one is used.
-const GGUF = {
-  small: { repo: "XHToken/Spark-X2.6-4B-GGUF", prefix: "Spark-X2.6-4B-" },
+// The brain comes in two sizes (quants); the smallQuant setting picks which one. See brains.js.
+const brainQuant = (b) => {
+  const offered = quantsFor(b);
+  return offered.find((q) => q.id === settings.smallQuant) ?? offered.find((q) => q.note === "Recommended") ?? offered[0];
 };
-const quantOf = (id) => QUANTS[id].find((q) => q.id === settings[`${id}Quant`]) ?? QUANTS[id].find((q) => q.note) ?? QUANTS[id][0];
-const weightsFile = (id) => `${GGUF[id].prefix}${quantOf(id).id}.gguf`;
+const brainFile = (b, quant = brainQuant(b).id) => `${BRAINS[b].prefix}${quant}.gguf`;
+/** The file of any size of a brain that is on disk, the chosen size first, or null. */
+const brainOnDisk = (b) => [brainQuant(b).id, ...BRAINS[b].quants.map((q) => q.id)].map((q) => brainFile(b, q)).find((f) => fs.existsSync(model(f))) ?? null;
+const isBrainFile = (b, name) => name.startsWith(BRAINS[b].prefix) && (name.endsWith(".gguf") || name.endsWith(".gguf.part"));
+
+/**
+ * SenseNova Loop needs SenseNova's own llama.cpp (stock llama.cpp can't load it yet), with M1's
+ * patch that sets the loop count when the model loads (engine/ in the repo). CI builds it for
+ * Apple silicon and for Linux with Vulkan, and publishes it under this tag.
+ */
+const LOOP_ENGINE = { repo: "morriszdweck/m1", tag: "loop-engine-1" };
+const loopEngineAsset = () => {
+  if (IS_MAC) return process.arch === "arm64" ? "llama-loop-macos-arm64.tar.gz" : null;
+  if (process.arch !== "x64") return null;
+  return process.env.M1_GPU === "cpu" ? "llama-loop-ubuntu-x64.tar.gz" : "llama-loop-ubuntu-vulkan-x64.tar.gz";
+};
 const CUSTOM_FILE = "custom-model.json";
 
 /** M1 used to run K2 Horizon 3.7B, then Spark X2.6 4B. Deletes their weights and says whether there were any. */
@@ -110,7 +126,6 @@ function engineAsset(assets) {
 }
 
 const model = (name) => path.join(DIRS.models, name);
-const weights = (id) => model(weightsFile(id));
 const gb = (bytes) => `${(bytes / 1e9).toFixed(1)} GB`;
 const marker = (dir) => path.join(dir, ".ready");
 /** The safety helper's marker holds this name, so a copy set up with an older model fetches this one. */
@@ -204,9 +219,9 @@ function pruneCustom(keep) {
   walk(CUSTOM_DIR);
 }
 
-/** Finds the llama-server inside the app's own engine folder. */
-function findEngine() {
-  const stack = [DIRS.engine];
+/** Finds the llama-server inside one of the app's engine folders. */
+function findEngine(root = DIRS.engine) {
+  const stack = [root];
   while (stack.length) {
     const dir = stack.pop();
     let entries = [];
@@ -251,8 +266,10 @@ class Backends {
     for (const id of ORDER) if (this.states[id].status === "installing") this.states[id] = { status: "missing" };
     const saved = load("downloads.json", {});
     this.unfinished = Array.isArray(saved.pending) ? saved.pending.filter((id) => ORDER.includes(id)) : [];
-    // Someone who had the old brain gets the new one without asking.
-    if (replaced && !this.custom && !this.installed("small") && !this.unfinished.includes("small")) this.unfinished.push("small");
+    // Someone who had the old brain gets the new one without asking. A computer that now gets
+    // SenseNova Loop fetches it in the background, and Spark answers until it's ready.
+    const upgrade = BRAIN === "loop" && brainOnDisk("spark") !== null;
+    if ((replaced || upgrade) && !this.custom && !this.installed("small") && !this.unfinished.includes("small")) this.unfinished.push("small");
     this.guardianWanted = saved.approveForMe === true;
   }
 
@@ -297,6 +314,7 @@ class Backends {
             bytes: custom.bytes,
             meta: custom.meta,
           },
+          efforts: this.efforts,
           quants: custom.variants.map((v) => ({
             id: v.id,
             label: v.label,
@@ -308,15 +326,16 @@ class Backends {
           })),
         };
       }
-      if (!GGUF[id]) return part;
-      const extra = 0;
-      const quant = quantOf(id);
+      if (id !== "small") return part;
+      const quant = brainQuant(BRAIN);
       return {
         ...part,
-        size: gb(quant.bytes + extra),
-        bytes: quant.bytes + extra,
+        detail: this.sparkStandIn() ? `${BRAINS[BRAIN].detail} ${BRAINS.spark.label} answers until it's downloaded.` : BRAINS[BRAIN].detail,
+        size: gb(quant.bytes),
+        bytes: quant.bytes,
         quant: quant.id,
-        quants: QUANTS[id].map((q) => ({ ...q, size: gb(q.bytes + extra), onDisk: fs.existsSync(model(`${GGUF[id].prefix}${q.id}.gguf`)) })),
+        quants: quantsFor(BRAIN).map((q) => ({ ...q, size: gb(q.bytes), onDisk: fs.existsSync(model(brainFile(BRAIN, q.id))) })),
+        efforts: this.efforts,
       };
     });
   }
@@ -334,7 +353,56 @@ class Backends {
     const was = this.states[id]?.status;
     this.states[id] = state;
     this.emit();
-    if (state.status === "running" && was !== "running") for (const hook of this.readyHooks) hook(id);
+    if (state.status === "running" && was !== "running") {
+      for (const hook of this.readyHooks) hook(id);
+      if (id === "small" && this.brain === "loop") this.dropSpark();
+    }
+  }
+
+  /** Spark stands in on a computer that gets SenseNova Loop until Loop and its engine are downloaded. */
+  sparkStandIn() {
+    return BRAIN === "loop" && !this.custom && !this.onDisk("small") && brainOnDisk("spark") !== null && findEngine() !== null;
+  }
+
+  /** The brain the Brain part runs: "custom" (from Hugging Face), this computer's brain, or Spark standing in. */
+  get brain() {
+    if (this.custom) return "custom";
+    return this.sparkStandIn() ? "spark" : BRAIN;
+  }
+
+  /** The stops the effort slider offers for the brain that's answering. */
+  get efforts() {
+    return BRAINS[this.brain === "loop" ? "loop" : "spark"].efforts;
+  }
+
+  /** Loop has answered, so Spark's weights only take up room. */
+  dropSpark() {
+    let names = [];
+    try {
+      names = fs.readdirSync(DIRS.models);
+    } catch {}
+    for (const name of names) if (isBrainFile("spark", name)) fs.rmSync(model(name), { force: true });
+  }
+
+  /** On disk, or (for the brain) Spark can stand in. */
+  canRun(id) {
+    return this.installed(id) || (id === "small" && this.sparkStandIn());
+  }
+
+  /**
+   * SenseNova Loop sets its loop count when it loads, so another effort loads it again (a few
+   * seconds, and the next reply reads the chat afresh). Waits until it answers.
+   */
+  async useLoops(loops) {
+    if (this.brain !== "loop" || !loops) return;
+    this.wantLoops = loops;
+    // A copy that's being launched gets its process first; then it's kept or swapped.
+    for (let i = 0; i < 40 && this.launching.has("small"); i++) await sleep(250);
+    if (!(this.procs.small && this.loopsRunning === loops)) {
+      if (this.procs.small) this.stop("small");
+      await this.start("small");
+    }
+    for (let i = 0; i < 240 && (this.launching.has("small") || (this.procs.small && !this.running("small"))); i++) await sleep(500);
   }
 
   onDisk(id) {
@@ -343,7 +411,7 @@ class Backends {
         return findEngine() !== null;
       case "small":
         if (this.custom) return variantOnDisk(variantOf(this.custom));
-        return fs.existsSync(weights("small"));
+        return fs.existsSync(model(brainFile(BRAIN))) && (BRAINS[BRAIN].engine !== "loop" || findEngine(DIRS.loopEngine) !== null);
       case "guardian":
         return guardianOnDisk();
       case "dictation":
@@ -370,14 +438,14 @@ class Backends {
   }
 
   get ready() {
-    return this.installed("engine") && this.installed("small");
+    return this.installed("engine") && this.canRun("small");
   }
 
   refresh() {
     for (const id of ORDER) {
       const s = this.states[id]?.status;
       if (s === "installing" || s === "starting" || s === "running" || s === "failed") continue;
-      this.states[id] = { status: this.onDisk(id) ? "installed" : "missing" };
+      this.states[id] = { status: this.canRun(id) ? "installed" : "missing" };
     }
   }
 
@@ -454,7 +522,7 @@ class Backends {
     return this.snapshot().find((p) => p.id === "small");
   }
 
-  /** Goes back to the built-in Spark X2.6 4B and deletes the custom download. */
+  /** Goes back to the built-in brain and deletes the custom download. */
   clearCustomModel() {
     if (this.busy) throw modelError("Wait for the current download to finish, then switch back.", 409);
     if (!this.custom) return this.snapshot().find((p) => p.id === "small");
@@ -519,7 +587,7 @@ class Backends {
         } catch (e) {
           const live = this.states[id]?.live && this.procs[id];
           if (signal.aborted) {
-            this.set(id, live ? { status: "running" } : { status: this.onDisk(id) ? "installed" : "missing" });
+            this.set(id, live ? { status: "running" } : { status: this.canRun(id) ? "installed" : "missing" });
             return;
           }
           this.set(id, live ? { status: "running", error: friendly(e) } : { status: "failed", error: friendly(e) });
@@ -561,7 +629,8 @@ class Backends {
         return this.installEngine(signal);
       case "small":
         if (this.custom) return this.installCustom(signal);
-        return download(hf(GGUF.small.repo, weightsFile("small")), weights("small"), {
+        if (BRAINS[BRAIN].engine === "loop" && !findEngine(DIRS.loopEngine)) await this.installLoopEngine(signal);
+        return download(hf(BRAINS[BRAIN].repo, brainFile(BRAIN)), model(brainFile(BRAIN)), {
           signal,
           onProgress: this.progress(id, "Downloading"),
         });
@@ -675,6 +744,32 @@ class Backends {
     }
     const flavor = asset.name.includes("-cuda-") ? "cuda" : asset.name.includes("-vulkan-") ? "vulkan" : IS_MAC ? "metal" : "cpu";
     fs.writeFileSync(path.join(DIRS.engine, ".flavor"), flavor);
+  }
+
+  /** SenseNova's llama.cpp with M1's loop patch, built by M1's CI (see LOOP_ENGINE). */
+  async installLoopEngine(signal) {
+    const asset = loopEngineAsset();
+    if (!asset) throw new Error("SenseNova Loop can't run on this computer.");
+    const url = `https://github.com/${LOOP_ENGINE.repo}/releases/download/${LOOP_ENGINE.tag}/${asset}`;
+    const archive = path.join(DIRS.tools, "llama-loop.tar.gz");
+    await download(url, archive, { signal, onProgress: this.progress("small", "Downloading SenseNova's engine") });
+    const sums = await fetch(`${url}.sha256`, { signal }).then((r) => (r.ok ? r.text() : ""));
+    const want = sums.trim().split(/\s+/)[0];
+    if (/^[0-9a-f]{64}$/.test(want)) {
+      const got = (await run("shasum", ["-a", "256", archive], { signal }).catch(() => run("sha256sum", [archive], { signal }))).trim().split(/\s+/)[0];
+      if (got !== want) {
+        fs.rmSync(archive, { force: true });
+        throw new Error("SenseNova's engine didn't download correctly. Try again.");
+      }
+    }
+    this.set("small", { status: "installing", live: this.states.small?.live === true, text: "Unpacking SenseNova's engine…" });
+    fs.rmSync(DIRS.loopEngine, { recursive: true, force: true });
+    fs.mkdirSync(DIRS.loopEngine, { recursive: true });
+    await run("tar", ["-xzf", archive, "-C", DIRS.loopEngine], { signal });
+    fs.rmSync(archive, { force: true });
+    const server = findEngine(DIRS.loopEngine);
+    if (!server) throw new Error("The download didn't contain llama-server.");
+    fs.chmodSync(server, 0o755);
   }
 
   get pythonEnv() {
@@ -805,26 +900,28 @@ class Backends {
         fs.mkdirSync(DIRS.bridge, { recursive: true });
         break;
     }
-    this.set(id, { status: this.onDisk(id) ? "installed" : "missing" });
+    this.set(id, { status: this.canRun(id) ? "installed" : "missing" });
   }
 
   /** Deletes this model's other sizes (or all of them), including half-finished downloads. */
   pruneQuants(id, { all = false } = {}) {
-    if (!GGUF[id] || (id === "small" && this.custom)) return;
-    const keep = all ? null : weightsFile(id);
+    if (id !== "small" || this.custom) return;
+    const keep = all ? null : brainFile(BRAIN);
     let names = [];
     try {
       names = fs.readdirSync(DIRS.models);
     } catch {}
     for (const name of names) {
-      if (name.startsWith(GGUF[id].prefix) && name !== keep && name !== `${keep}.part`) fs.rmSync(model(name), { force: true });
+      // Removing the brain also removes Spark kept for standing in.
+      const other = all && BRAIN !== "spark" && isBrainFile("spark", name);
+      if ((isBrainFile(BRAIN, name) && name !== keep && name !== `${keep}.part`) || other) fs.rmSync(model(name), { force: true });
     }
   }
 
   /** Called after the size setting changes: fetches the new size if this model was set up. */
   switchQuant(id) {
-    if (!GGUF[id] || (id === "small" && this.custom)) return;
-    const hadOne = fs.readdirSync(DIRS.models).some((name) => name.startsWith(GGUF[id].prefix) && name.endsWith(".gguf"));
+    if (id !== "small" || this.custom) return;
+    const hadOne = fs.readdirSync(DIRS.models).some((name) => name.startsWith(BRAINS[BRAIN].prefix) && name.endsWith(".gguf"));
     this.refresh();
     this.emit();
     if (hadOne && !this.installed(id)) this.install([id]);
@@ -840,26 +937,40 @@ class Backends {
   // ---- Run ----
 
   async startAll() {
-    await Promise.all(ORDER.filter((id) => id !== "engine" && this.installed(id)).map((id) => this.start(id)));
+    await Promise.all(ORDER.filter((id) => id !== "engine" && this.canRun(id)).map((id) => this.start(id)));
   }
 
   command(id) {
     const port = String(PARTS[id].port);
     switch (id) {
       case "small": {
-        const server = findEngine();
+        const brain = this.brain;
+        const server = brain === "loop" ? findEngine(DIRS.loopEngine) : findEngine();
         if (!server) return null;
         const custom = this.custom;
         const variant = variantOf(custom);
         if (custom && !variant) return null;
         const context = this.contextTokens(id);
-        // One slot, so a chat gets the whole context. Spark's thinking comes back
+        // One slot, so a chat gets the whole context. The thinking comes back
         // raw (--reasoning-format none): M1 reads its <think> tags itself.
         const args = ["--host", "127.0.0.1", "--port", port, "-c", String(context), "-np", "1", "-ngl", "99", "--reasoning-format", "none"];
         if (custom?.meta?.hasTemplate !== false) args.push("--jinja");
         if (this.cpuOnly) args.push("--device", "none");
-        args.push("-m", custom ? customPath(variant.file) : weights("small"), "--alias", "Spark-X2.6-4B");
-        return { cmd: server, args };
+        const env = {};
+        let file;
+        if (custom) file = customPath(variant.file);
+        else if (brain === "loop") {
+          file = model(brainFile("loop"));
+          // More loops keep more of the chat per word; an 8-bit cache keeps that small.
+          args.push("-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0");
+          this.loopsRunning = this.wantLoops ?? effortPlan("loop", settings.reasoningEffort).loops;
+          env.LLAMA_SENSENOVA_LOOPS = String(this.loopsRunning);
+        } else file = model(BRAIN === "spark" ? brainFile("spark") : brainOnDisk("spark"));
+        const named = custom ? { id: custom.repo.split("/").pop(), label: custom.label } : BRAINS[brain];
+        MODELS.small.id = named.id;
+        MODELS.small.label = named.label;
+        args.push("-m", file, "--alias", named.id);
+        return { cmd: server, args, env };
       }
       case "guardian": {
         const shared = ownGuardian() ? null : sharedGuardian();
@@ -888,7 +999,7 @@ class Backends {
   }
 
   async start(id) {
-    if (id === "engine" || this.procs[id] || this.launching.has(id) || !this.installed(id)) return;
+    if (id === "engine" || this.procs[id] || this.launching.has(id) || !this.canRun(id)) return;
     if (await this.launch(id)) return;
     // A GPU build that can't use the GPU (an old driver, a missing library) still runs on the CPU.
     const gpu = ["vulkan", "cuda"].includes(this.engineFlavor());
@@ -929,7 +1040,7 @@ class Backends {
       this.set(id, wasRunning ? { status: "failed", error: reasonFromLog(logFile, port) } : this.states[id]);
     });
     child.on("error", () => {});
-    for (let i = 0; i < 240 && !exited; i++) {
+    for (let i = 0; i < 240 && !exited && !child.stopped; i++) {
       try {
         const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1000) });
         if (res.ok) {
@@ -939,6 +1050,9 @@ class Backends {
       } catch {}
       await sleep(500);
     }
+    // Stopped on purpose while it was starting (SenseNova Loop reloading for another effort):
+    // that's not a failure, and another copy may already be starting.
+    if (child.stopped) return false;
     if (this.procs[id] === child) {
       delete this.procs[id];
       child.kill("SIGTERM");
@@ -951,8 +1065,9 @@ class Backends {
     const child = this.procs[id];
     if (!child) return;
     delete this.procs[id];
+    child.stopped = true;
     child.kill("SIGTERM");
-    this.set(id, { status: this.onDisk(id) ? "installed" : "missing" });
+    this.set(id, { status: this.canRun(id) ? "installed" : "missing" });
   }
 
   stopAll() {

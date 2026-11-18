@@ -84,7 +84,8 @@ export function App() {
     );
   }
 
-  const hasModel = parts.some((p) => p.id === "small" && ["installed", "starting", "running"].includes(p.status));
+  // A brain that keeps answering while a new one downloads (live) counts too.
+  const hasModel = parts.some((p) => p.id === "small" && (["installed", "starting", "running"].includes(p.status) || (p.status === "installing" && p.live)));
   if (!hasModel) {
     return (
       <>

@@ -7,11 +7,12 @@ import { splitThink } from "./think.js";
 
 /**
  * Streams a chat completion. Yields {content}, then {usage} and {timings} when the
- * server reports them. effort is the slider: instant (no thinking), medium (Spark's
- * low thinking budget) or high. Sampling is XHToken's recommended one.
+ * server reports them. think turns thinking on; sparkEffort is Spark's own "low" or
+ * "high" (null for SenseNova Loop, whose template only has thinking on or off; its
+ * loops are set when it loads, see brains.js). Sampling is each maker's recommended one.
  */
-export async function* stream({ url, model, messages, temperature = 1.0, maxTokens = 1024, stop, effort = "high", signal }) {
-  const kwargs = effort === "instant" ? { enable_thinking: false } : { enable_thinking: true, reasoning_effort: effort === "medium" ? "low" : "high" };
+export async function* stream({ url, model, messages, temperature = 1.0, maxTokens = 1024, stop, think = true, sparkEffort = "high", topK = 0, signal }) {
+  const kwargs = think ? { enable_thinking: true, ...(sparkEffort && { reasoning_effort: sparkEffort }) } : { enable_thinking: false };
   if (!isLocal(url)) throw new Error("Refusing a model address that isn't on this computer.");
   let res;
   try {
@@ -24,7 +25,7 @@ export async function* stream({ url, model, messages, temperature = 1.0, maxToke
         messages,
         temperature,
         top_p: 0.95,
-        top_k: 0,
+        top_k: topK,
         min_p: 0,
         max_tokens: maxTokens,
         stop,
@@ -77,6 +78,6 @@ export async function* stream({ url, model, messages, temperature = 1.0, maxToke
 /** Collects a whole completion as text, without the thinking. Small jobs don't think. */
 export async function complete(options) {
   let text = "";
-  for await (const part of stream({ effort: "instant", ...options })) if (part.content) text += part.content;
+  for await (const part of stream({ think: false, ...options })) if (part.content) text += part.content;
   return splitThink(text).rest.trim();
 }

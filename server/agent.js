@@ -4,6 +4,7 @@
 import crypto from "node:crypto";
 import { DEVICE, IS_MAC, MODELS, bus, load, saver, settings } from "./core.js";
 import { backends } from "./backends.js";
+import { STEP_TOKENS, effortLevel, effortPlan } from "./brains.js";
 import { classify, hardDeny } from "./guardian.js";
 import { complete, stream } from "./llm.js";
 import { splitThink } from "./think.js";
@@ -17,8 +18,6 @@ import { uploads } from "./uploads.js";
 const uid = () => crypto.randomUUID();
 // Spark runs one tool per step: stop as soon as its call closes.
 const STOPS = ["</tool_call>"];
-/** How much Spark may write per step at each effort, thinking included. */
-const STEP_TOKENS = { instant: 2048, medium: 8192, high: 16384 };
 const RUNAWAY = 100;
 const OPEN = ["pending", "checking", "approval", "running"];
 
@@ -67,6 +66,10 @@ function provisionalTitle(text, attachments) {
 }
 
 export const agent = {
+  /** A reply is being written. */
+  get busy() {
+    return running.size > 0;
+  },
   get chats() {
     return chats;
   },
@@ -170,8 +173,9 @@ export const agent = {
     return true;
   },
 
-  /** M1 has one brain. */
-  route() {
+  /** M1 has one brain. SenseNova Loop first loads with the loop count this effort needs. */
+  async route(plan) {
+    await backends.useLoops(plan.loops);
     if (backends.running("small")) return { id: "small" };
     const waking = backends.states.small?.status === "starting";
     return { error: waking ? "The model is still waking up. Try again in a few seconds." : "No model is running yet. Open Settings → Downloads to set one up." };
@@ -192,7 +196,11 @@ export const agent = {
     let tokens = 0;
     let genMs = 0;
     try {
-      const route = this.route(chat);
+      // The effort slider (see brains.js): whether to think, Spark's own level, and Loop's loop count.
+      const brain = backends.brain === "loop" ? "loop" : "spark";
+      const level = effortLevel(brain, settings.reasoningEffort);
+      const plan = effortPlan(brain, level);
+      const route = await this.route(plan);
       if (route.error) throw new Error(route.error);
       const model = MODELS[route.id];
       reply.model = route.id;
@@ -208,8 +216,9 @@ export const agent = {
         const context = backends.contextTokens(route.id);
         const budget = Math.min(settings.contextBudget, Math.floor(context / 2));
         const wire = buildWire(chat.messages, {
-          system: systemPrompt({ tools, query: request.content, project: chat.project }),
+          system: systemPrompt({ tools, query: request.content, project: chat.project, brain }),
           budget,
+          brain,
         });
         // Out of steps: ask for an answer from what was found instead of another call.
         if (final) {
@@ -223,10 +232,10 @@ export const agent = {
         let last = 0;
         const thinkStart = Date.now();
         let thinkEnd = 0;
-        // The effort slider: Spark answers straight away (Instant), thinks briefly (Medium) or thinks long (High).
-        const effort = rush ? "instant" : STEP_TOKENS[settings.reasoningEffort] ? settings.reasoningEffort : "medium";
+        // After a step that thought past its budget, the next one answers without thinking (same loops).
+        const think = plan.think && !rush;
         rush = false;
-        const maxTokens = Math.max(256, Math.min(STEP_TOKENS[effort], context - budget));
+        const maxTokens = Math.max(256, Math.min(STEP_TOKENS[think ? level : "instant"], context - budget));
         for await (const part of stream({
           url: model.url(),
           model: model.id,
@@ -234,7 +243,9 @@ export const agent = {
           temperature: model.temperature(),
           maxTokens,
           stop: STOPS,
-          effort,
+          think,
+          sparkEffort: brain === "spark" ? (plan.sparkEffort ?? "high") : null,
+          topK: brain === "loop" ? 20 : 0,
           signal,
         })) {
           if (part.content) {
@@ -271,7 +282,7 @@ export const agent = {
             const name = misfire?.name ?? "tool";
             const result = misfire
               ? `${name} isn't available right now. Use one of the listed functions, or answer.`
-              : "That function call wasn't in the right format. Use <tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call> with a listed function, or answer.";
+              : `That function call wasn't in the right format. Use ${brain === "loop" ? "<tool_call><function=name><parameter=key>value</parameter></function></tool_call>" : "<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>"} with a listed function, or answer.`;
             const tool = misfire && toolMap.get(name);
             reply.steps.push({ id: uid(), tool: name, args: misfire?.args ?? {}, label: tool ? tool.label(misfire.args, chat.project) : "Tool call", note: text, status: "error", result, at: Date.now() });
             live = "";
@@ -281,7 +292,7 @@ export const agent = {
         }
         live = "";
         // Thought past the budget without acting: go again without thinking, instead of giving up.
-        if (!inline.done && !call && effort !== "instant" && !final) {
+        if (!inline.done && !call && think && !final) {
           rush = true;
           continue;
         }

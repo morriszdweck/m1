@@ -1,5 +1,6 @@
 // Reasoning effort, at the right of the message box. The button names the level;
-// clicking it opens a small slider to pick Instant (no thinking), Medium or High.
+// clicking it opens a small slider. Spark has Instant (no thinking), Medium and High;
+// SenseNova Loop also has Low and Max (it runs its middle layers 1 to 4 times).
 
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { api } from "../api";
@@ -12,15 +13,21 @@ import { Menu } from "./ui";
 const PAD = 20;
 const at = (i: number, last: number) => `calc(${PAD}px + (100% - ${2 * PAD}px) * ${i / last})`;
 
-const LEVELS: { value: ReasoningEffort; label: string }[] = [
-  { value: "instant", label: "Instant" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-];
+const LABELS: Record<ReasoningEffort, string> = { instant: "Instant", low: "Low", medium: "Medium", high: "High", max: "Max" };
+const SPARK: ReasoningEffort[] = ["instant", "medium", "high"];
+
+/** The stop a saved effort shows as when this brain doesn't have it (Spark has no Low or Max). */
+function stopFor(levels: ReasoningEffort[], saved: ReasoningEffort) {
+  if (levels.includes(saved)) return saved;
+  if (saved === "max") return levels[levels.length - 1];
+  return levels.includes("medium") ? "medium" : levels[0];
+}
 
 export function EffortMenu() {
   const saved = useStore((s) => s.settings?.reasoningEffort) ?? "medium";
-  const index = Math.max(0, LEVELS.findIndex((l) => l.value === saved));
+  const efforts = useStore((s) => s.parts.find((p) => p.id === "small")?.efforts);
+  const LEVELS = (efforts?.length ? efforts : SPARK).map((value) => ({ value, label: LABELS[value] }));
+  const index = Math.max(0, LEVELS.findIndex((l) => l.value === stopFor(LEVELS.map((l) => l.value), saved)));
 
   return (
     <Menu
@@ -32,12 +39,12 @@ export function EffortMenu() {
           <span>{LEVELS[index].label}</span>
         </button>
       )}
-      items={() => <EffortSlider index={index} />}
+      items={() => <EffortSlider index={index} levels={LEVELS} />}
     />
   );
 }
 
-function EffortSlider({ index }: { index: number }) {
+function EffortSlider({ index, levels: LEVELS }: { index: number; levels: { value: ReasoningEffort; label: string }[] }) {
   const [shown, setShown] = useState(index);
   const track = useRef<HTMLDivElement>(null);
   const last = LEVELS.length - 1;
@@ -90,7 +97,7 @@ function EffortSlider({ index }: { index: number }) {
         {LEVELS.map((l, i) => (
           <span key={l.value} className={cx("effort-tick", i <= shown && "hidden")} style={{ left: at(i, last) }} />
         ))}
-        {/* Colour fills the track up to the thumb: a sliver at Instant, half at Medium, all of it at High. */}
+        {/* Colour fills the track up to the thumb: a sliver at Instant, all of it at the top stop. */}
         <span className="effort-fill" style={{ width: `calc(${at(shown, last)} + ${PAD}px)` }} />
         <span className="effort-thumb" style={{ left: `calc(${at(shown, last)} + 8px)` }} />
       </div>

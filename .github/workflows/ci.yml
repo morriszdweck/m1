@@ -139,6 +139,8 @@ jobs:
       - run: npm ci && npm run build
       - name: Download the engine and Spark X2.6 4B, chat and run a tool
         run: node scripts/smoke.mjs --models
+        env:
+          M1_BRAIN: spark # SenseNova Loop's own check is in loop-engine.yml
         timeout-minutes: 40
 
 
