@@ -69,7 +69,7 @@ jobs:
           done
 
   publish:
-    name: Publish ${{ env.TAG }}
+    name: Publish the loop-engine-1 release
     if: github.ref == 'refs/heads/main'
     needs: [build, test]
     runs-on: ubuntu-latest
