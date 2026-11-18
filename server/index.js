@@ -10,6 +10,7 @@ import { DATA, ROOT, bus, flushAll, settings, updateSettings } from "./core.js";
 import { openPath, reveal } from "./platform.js";
 import { PARTS, backends } from "./backends.js";
 import { agent } from "./agent.js";
+import { effortPlan } from "./brains.js";
 import { memory } from "./memory.js";
 import { routineStore } from "./routines.js";
 import { cancelReminder, reminderList } from "./tools.js";
@@ -208,8 +209,14 @@ route("PATCH", "/api/settings", async (req) => {
   } else if ("approvalMode" in patch && backends.guardianWanted) {
     backends.wantGuardian(false);
   }
+  const effortBefore = settings.reasoningEffort;
   const next = updateSettings(patch);
   if (settings.smallQuant !== before) backends.switchQuant("small");
+  // SenseNova Loop loads with the loop count an effort needs. Load it now, unless a reply is
+  // being written (then the next reply does it), so the next message doesn't wait.
+  if (settings.reasoningEffort !== effortBefore && backends.brain === "loop" && !agent.busy && !backends.busy) {
+    backends.useLoops(effortPlan("loop", settings.reasoningEffort).loops).catch(() => {});
+  }
   return next;
 });
 backends.readyHooks.push((id) => {

@@ -173,8 +173,9 @@ export const agent = {
     return true;
   },
 
-  /** M1 has one brain. */
-  route() {
+  /** M1 has one brain. SenseNova Loop first loads with the loop count this effort needs. */
+  async route(plan) {
+    await backends.useLoops(plan.loops);
     if (backends.running("small")) return { id: "small" };
     const waking = backends.states.small?.status === "starting";
     return { error: waking ? "The model is still waking up. Try again in a few seconds." : "No model is running yet. Open Settings → Downloads to set one up." };
@@ -195,12 +196,11 @@ export const agent = {
     let tokens = 0;
     let genMs = 0;
     try {
-      // The effort slider (see brains.js): whether to think, Spark's own level, and for Loop how
-      // hard to think (a line in the system prompt) and a cap on its thinking.
+      // The effort slider (see brains.js): whether to think, Spark's own level, and Loop's loop count.
       const brain = backends.brain === "loop" ? "loop" : "spark";
       const level = effortLevel(brain, settings.reasoningEffort);
       const plan = effortPlan(brain, level);
-      const route = this.route();
+      const route = await this.route(plan);
       if (route.error) throw new Error(route.error);
       const model = MODELS[route.id];
       reply.model = route.id;
@@ -215,11 +215,8 @@ export const agent = {
         // A custom model may hold less than the usual budget: keep half its context for the answer.
         const context = backends.contextTokens(route.id);
         const budget = Math.min(settings.contextBudget, Math.floor(context / 2));
-        // After a step that thought past its budget, the next one answers without thinking.
-        const think = plan.think && !rush;
-        rush = false;
         const wire = buildWire(chat.messages, {
-          system: systemPrompt({ tools, query: request.content, project: chat.project, brain, effortHint: think ? plan.hint : null }),
+          system: systemPrompt({ tools, query: request.content, project: chat.project, brain }),
           budget,
           brain,
         });
@@ -235,6 +232,9 @@ export const agent = {
         let last = 0;
         const thinkStart = Date.now();
         let thinkEnd = 0;
+        // After a step that thought past its budget, the next one answers without thinking (same loops).
+        const think = plan.think && !rush;
+        rush = false;
         const maxTokens = Math.max(256, Math.min(STEP_TOKENS[think ? level : "instant"], context - budget));
         for await (const part of stream({
           url: model.url(),
@@ -246,7 +246,6 @@ export const agent = {
           think,
           sparkEffort: brain === "spark" ? (plan.sparkEffort ?? "high") : null,
           topK: brain === "loop" ? 20 : 0,
-          thinkCap: think ? plan.thinkCap : null,
           signal,
         })) {
           if (part.content) {

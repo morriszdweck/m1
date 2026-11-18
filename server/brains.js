@@ -6,13 +6,10 @@
 //
 // They think in different ways, so the effort slider means different things:
 //   Spark:  Instant (no thinking) · Medium (its own "low" thinking) · High (its "high" thinking)
-//   Loop:   Instant (no thinking) · Low · Medium · High · Max (thinking, told how hard to think)
-// Loop's template only turns thinking on or off, so the system prompt says how much to think
-// at each stop, and a cap on thinking tokens catches a stop that thinks far past it (the
-// engine then closes the thinking and Loop answers from what it has).
-// Loop always runs its middle layers twice, as released: SenseNova's model card says the
-// checkpoint's loop count is part of how it must be run. Its 3- and 4-loop gains come from
-// models trained that way, which aren't released.
+//   Loop:   Instant (2 loops, as trained, no thinking) · Low (1 loop) · Medium (2 loops) ·
+//           High (3 loops) · Max (4 loops)
+// Loop's middle 24 layers run that many times per token. More loops = more computation per
+// word, so it's slower. The engine M1 ships for Loop sets the count when the model loads.
 
 import os from "node:os";
 import { IS_MAC } from "./core.js";
@@ -37,7 +34,7 @@ export const BRAINS = {
   loop: {
     id: "SenseNova-Loop-9B",
     label: "SenseNova Loop 9B",
-    detail: "SenseNova Loop 9B. Runs its middle layers twice for more depth, thinks as hard as you ask, writes and takes actions.",
+    detail: "SenseNova Loop 9B. Runs its middle layers again to think deeper, writes and takes actions.",
     repo: "sensenova/SenseNova-Loop-9B-GGUF",
     prefix: "SenseNova-Loop-9B-",
     quants: [
@@ -59,16 +56,15 @@ const EFFORTS = {
     high: { think: true, sparkEffort: "high" },
   },
   loop: {
-    instant: { think: false },
-    low: { think: true, hint: "Effort: low. Think briefly, a few short lines at most, then answer.", thinkCap: 1024 },
-    medium: { think: true, thinkCap: 6144 },
-    high: { think: true, hint: "Effort: high. Think the problem through carefully and check your work before you answer.", thinkCap: 12288 },
-    max: {
-      think: true,
-      hint: "Effort: max. Take all the time you need: work through the problem step by step, weigh other approaches, and double-check your answer.",
-    },
+    instant: { think: false, loops: 2 },
+    low: { think: true, loops: 1 },
+    medium: { think: true, loops: 2 },
+    high: { think: true, loops: 3 },
+    max: { think: true, loops: 4 },
   },
 };
+/** Loop as it was trained. Used when no effort applies (a model from Hugging Face never loops). */
+export const TRAINED_LOOPS = 2;
 export const ALL_EFFORTS = ["instant", "low", "medium", "high", "max"];
 
 /** How much the brain may write per step at each effort, thinking included. */
@@ -83,7 +79,7 @@ export function effortLevel(brain, saved) {
   return levels.includes("medium") ? "medium" : levels[0];
 }
 
-/** {think, sparkEffort?, hint?, thinkCap?} for a stop on the slider. */
+/** {think, sparkEffort?, loops?} for a stop on the slider. */
 export function effortPlan(brain, saved) {
   const table = EFFORTS[brain] ?? EFFORTS.spark;
   return table[effortLevel(brain, saved)];
