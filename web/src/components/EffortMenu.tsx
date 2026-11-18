@@ -1,6 +1,6 @@
 // Reasoning effort, at the right of the message box. The button names the level;
 // clicking it opens a small slider. Spark has Instant (no thinking), Medium and High;
-// SenseNova Loop also has Low and Max (it runs its middle layers 1 to 4 times).
+// SenseNova Loop also has Max (it runs its middle layers 2 to 4 times).
 
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { api } from "../api";
@@ -9,14 +9,14 @@ import type { ReasoningEffort } from "../types";
 import { cx } from "../util";
 import { Menu } from "./ui";
 
-/** Space at each end of the track, so the thumb sits inside it at Low and High. */
+/** Space at each end of the track, so the thumb sits inside it at both ends. */
 const PAD = 20;
 const at = (i: number, last: number) => `calc(${PAD}px + (100% - ${2 * PAD}px) * ${i / last})`;
 
-const LABELS: Record<ReasoningEffort, string> = { instant: "Instant", low: "Low", medium: "Medium", high: "High", max: "Max" };
+const LABELS: Record<ReasoningEffort, string> = { instant: "Instant", medium: "Medium", high: "High", max: "Max" };
 const SPARK: ReasoningEffort[] = ["instant", "medium", "high"];
 
-/** The stop a saved effort shows as when this brain doesn't have it (Spark has no Low or Max). */
+/** The stop a saved effort shows as when this brain doesn't have it (Spark has no Max). */
 function stopFor(levels: ReasoningEffort[], saved: ReasoningEffort) {
   if (levels.includes(saved)) return saved;
   if (saved === "max") return levels[levels.length - 1];

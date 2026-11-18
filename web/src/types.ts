@@ -103,8 +103,8 @@ export type ModelResolution = {
 
 export type ApprovalMode = "askAlways" | "approveForMe" | "fullAuto";
 
-/** How hard the brain works before it answers. Instant doesn't think. Low and Max are SenseNova Loop only. */
-export type ReasoningEffort = "instant" | "low" | "medium" | "high" | "max";
+/** How hard the brain works before it answers. Instant doesn't think. Max is SenseNova Loop only. */
+export type ReasoningEffort = "instant" | "medium" | "high" | "max";
 
 
 export type Settings = {

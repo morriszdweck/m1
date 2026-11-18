@@ -6,8 +6,8 @@
 //
 // They think in different ways, so the effort slider means different things:
 //   Spark:  Instant (no thinking) · Medium (its own "low" thinking) · High (its "high" thinking)
-//   Loop:   Instant (1 loop, no thinking) · Low (1 loop) · Medium (2 loops, as trained) ·
-//           High (3 loops) · Max (4 loops)
+//   Loop:   Instant (2 loops, no thinking) · Medium (2 loops, as trained) · High (3 loops) ·
+//           Max (4 loops)
 // Loop's middle 24 layers run that many times per token. More loops = more computation per
 // word, so it's slower. The engine M1 ships for Loop sets the count when the model loads.
 
@@ -41,7 +41,7 @@ export const BRAINS = {
       { id: "Q4_K_M", label: "Balanced", bytes: 5.82e9, note: "Recommended" },
       { id: "Q8_0", label: "Best", bytes: 9.8e9, note: "Near full quality", minGB: 24 },
     ],
-    efforts: ["instant", "low", "medium", "high", "max"],
+    efforts: ["instant", "medium", "high", "max"],
     /** Loop writes Qwen's <tool_call><function=name><parameter=k>v</parameter></function></tool_call>. */
     calls: "qwen",
     engine: "loop",
@@ -56,8 +56,7 @@ const EFFORTS = {
     high: { think: true, sparkEffort: "high" },
   },
   loop: {
-    instant: { think: false, loops: 1 },
-    low: { think: true, loops: 1 },
+    instant: { think: false, loops: 2 },
     medium: { think: true, loops: 2 },
     high: { think: true, loops: 3 },
     max: { think: true, loops: 4 },
@@ -65,16 +64,15 @@ const EFFORTS = {
 };
 /** Loop as it was trained. Used when no effort applies (a model from Hugging Face never loops). */
 export const TRAINED_LOOPS = 2;
-export const ALL_EFFORTS = ["instant", "low", "medium", "high", "max"];
+export const ALL_EFFORTS = ["instant", "medium", "high", "max"];
 
 /** How much the brain may write per step at each effort, thinking included. */
-export const STEP_TOKENS = { instant: 2048, low: 8192, medium: 8192, high: 16384, max: 24576 };
+export const STEP_TOKENS = { instant: 2048, medium: 8192, high: 16384, max: 24576 };
 
-/** A saved stop this brain doesn't have moves to the nearest one it does (Spark has no Low or Max). */
+/** A saved stop this brain doesn't have moves to the nearest one it does (Spark has no Max). */
 export function effortLevel(brain, saved) {
   const levels = BRAINS[brain]?.efforts ?? BRAINS.spark.efforts;
   if (levels.includes(saved)) return saved;
-  if (saved === "low") return levels.includes("medium") ? "medium" : levels[0];
   if (saved === "max") return levels[levels.length - 1];
   return levels.includes("medium") ? "medium" : levels[0];
 }
