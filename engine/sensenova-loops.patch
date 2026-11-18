@@ -1,5 +1,5 @@
 diff --git a/src/llama-model-loader.cpp b/src/llama-model-loader.cpp
-index 548ade101..3a05d0f70 100644
+index 548ade1..e08fc49 100644
 --- a/src/llama-model-loader.cpp
 +++ b/src/llama-model-loader.cpp
 @@ -801,6 +801,59 @@ llama_model_loader::llama_model_loader(
@@ -56,7 +56,7 @@ index 548ade101..3a05d0f70 100644
 +            }
 +            weights_map = std::move(renamed);
 +        }
-+        LLAMA_LOG_INFO("%s: SenseNova Loop runs its shared block %d times (file: %d)\n", __func__, loops, (int) count);
++        LLAMA_LOG_WARN("%s: SenseNova Loop runs its shared block %d times (file: %d)\n", __func__, loops, (int) count);
 +    }
 +
      n_kv      = gguf_get_n_kv(metadata);
