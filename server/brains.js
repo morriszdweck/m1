@@ -6,7 +6,7 @@
 //
 // They think in different ways, so the effort slider means different things:
 //   Spark:  Instant (no thinking) · Medium (its own "low" thinking) · High (its "high" thinking)
-//   Loop:   Instant (1 loop, no thinking) · Low (1 loop) · Medium (2 loops, as trained) ·
+//   Loop:   Instant (2 loops, as trained, no thinking) · Low (1 loop) · Medium (2 loops) ·
 //           High (3 loops) · Max (4 loops)
 // Loop's middle 24 layers run that many times per token. More loops = more computation per
 // word, so it's slower. The engine M1 ships for Loop sets the count when the model loads.
@@ -56,7 +56,7 @@ const EFFORTS = {
     high: { think: true, sparkEffort: "high" },
   },
   loop: {
-    instant: { think: false, loops: 1 },
+    instant: { think: false, loops: 2 },
     low: { think: true, loops: 1 },
     medium: { think: true, loops: 2 },
     high: { think: true, loops: 3 },
