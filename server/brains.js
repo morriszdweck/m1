@@ -4,12 +4,10 @@
 // graphics chip (an Apple silicon Mac, or Linux with a Vulkan driver). Everything else keeps
 // Spark X2.6 4B. M1_BRAIN=spark or M1_BRAIN=loop picks one by hand.
 //
-// They think in different ways, so the effort slider means different things:
-//   Spark:  Instant (no thinking) · Medium (its own "low" thinking) · High (its "high" thinking)
-//   Loop:   Instant (2 loops, no thinking) · Medium (2 loops, as trained) · High (3 loops) ·
-//           Max (4 loops)
-// Loop's middle 24 layers run that many times per token. More loops = more computation per
-// word, so it's slower. The engine M1 ships for Loop sets the count when the model loads.
+// They think in different ways, so the control beside the message box differs:
+//   Spark:  a slider. Instant (no thinking) · Medium (its own "low" thinking) · High (its "high" thinking)
+//   Loop:   a thinking toggle. Off is "instant", on is "medium". Both run the model as released,
+//           its middle 24 layers twice per word (2 loops).
 
 import os from "node:os";
 import { IS_MAC } from "./core.js";
@@ -41,14 +39,14 @@ export const BRAINS = {
       { id: "Q4_K_M", label: "Balanced", bytes: 5.82e9, note: "Recommended" },
       { id: "Q8_0", label: "Best", bytes: 9.8e9, note: "Near full quality", minGB: 24 },
     ],
-    efforts: ["instant", "medium", "high", "max"],
+    efforts: ["instant", "medium"],
     /** Loop writes Qwen's <tool_call><function=name><parameter=k>v</parameter></function></tool_call>. */
     calls: "qwen",
     engine: "loop",
   },
 };
 
-/** What each stop on the slider does for each brain. */
+/** What each stop does for each brain. */
 const EFFORTS = {
   spark: {
     instant: { think: false },
@@ -56,28 +54,24 @@ const EFFORTS = {
     high: { think: true, sparkEffort: "high" },
   },
   loop: {
-    instant: { think: false, loops: 2 },
-    medium: { think: true, loops: 2 },
-    high: { think: true, loops: 3 },
-    max: { think: true, loops: 4 },
+    instant: { think: false },
+    // Loop has one thinking mode, so a step gets as long as it needs to finish thinking.
+    medium: { think: true, stepTokens: 24576 },
   },
 };
-/** Loop as it was trained. Used when no effort applies (a model from Hugging Face never loops). */
-export const TRAINED_LOOPS = 2;
-export const ALL_EFFORTS = ["instant", "medium", "high", "max"];
+export const ALL_EFFORTS = ["instant", "medium", "high"];
 
 /** How much the brain may write per step at each effort, thinking included. */
-export const STEP_TOKENS = { instant: 2048, medium: 8192, high: 16384, max: 24576 };
+export const STEP_TOKENS = { instant: 2048, medium: 8192, high: 16384 };
 
-/** A saved stop this brain doesn't have moves to the nearest one it does (Spark has no Max). */
+/** A saved stop this brain doesn't have moves to Medium (Loop has no High: it means thinking on). */
 export function effortLevel(brain, saved) {
   const levels = BRAINS[brain]?.efforts ?? BRAINS.spark.efforts;
   if (levels.includes(saved)) return saved;
-  if (saved === "max") return levels[levels.length - 1];
   return levels.includes("medium") ? "medium" : levels[0];
 }
 
-/** {think, sparkEffort?, loops?} for a stop on the slider. */
+/** {think, sparkEffort?, stepTokens?} for a stop. */
 export function effortPlan(brain, saved) {
   const table = EFFORTS[brain] ?? EFFORTS.spark;
   return table[effortLevel(brain, saved)];

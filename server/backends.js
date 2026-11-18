@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { DATA, DEVICE, DIRS, IS_MAC, MODELS, ROOT, bus, bytesText, load, run, save, settings, sleep } from "./core.js";
-import { BRAIN, BRAINS, effortPlan, quantsFor } from "./brains.js";
+import { BRAIN, BRAINS, quantsFor } from "./brains.js";
 import { hfHeaders, modelError, probeGGUF, resolveHfModel } from "./models.js";
 import { download } from "./download.js";
 import { linuxGPU, listeners } from "./platform.js";
@@ -387,22 +387,6 @@ class Backends {
   /** On disk, or (for the brain) Spark can stand in. */
   canRun(id) {
     return this.installed(id) || (id === "small" && this.sparkStandIn());
-  }
-
-  /**
-   * SenseNova Loop sets its loop count when it loads, so another effort loads it again (a few
-   * seconds, and the next reply reads the chat afresh). Waits until it answers.
-   */
-  async useLoops(loops) {
-    if (this.brain !== "loop" || !loops) return;
-    this.wantLoops = loops;
-    // A copy that's being launched gets its process first; then it's kept or swapped.
-    for (let i = 0; i < 40 && this.launching.has("small"); i++) await sleep(250);
-    if (!(this.procs.small && this.loopsRunning === loops)) {
-      if (this.procs.small) this.stop("small");
-      await this.start("small");
-    }
-    for (let i = 0; i < 240 && (this.launching.has("small") || (this.procs.small && !this.running("small"))); i++) await sleep(500);
   }
 
   onDisk(id) {
@@ -961,10 +945,8 @@ class Backends {
         if (custom) file = customPath(variant.file);
         else if (brain === "loop") {
           file = model(brainFile("loop"));
-          // More loops keep more of the chat per word; an 8-bit cache keeps that small.
+          // It runs as released (2 loops). Its loops keep more of the chat per word; an 8-bit cache keeps that small.
           args.push("-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0");
-          this.loopsRunning = this.wantLoops ?? effortPlan("loop", settings.reasoningEffort).loops;
-          env.LLAMA_SENSENOVA_LOOPS = String(this.loopsRunning);
         } else file = model(BRAIN === "spark" ? brainFile("spark") : brainOnDisk("spark"));
         const named = custom ? { id: custom.repo.split("/").pop(), label: custom.label } : BRAINS[brain];
         MODELS.small.id = named.id;

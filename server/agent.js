@@ -173,9 +173,8 @@ export const agent = {
     return true;
   },
 
-  /** M1 has one brain. SenseNova Loop first loads with the loop count this effort needs. */
-  async route(plan) {
-    await backends.useLoops(plan.loops);
+  /** M1 has one brain. */
+  async route() {
     if (backends.running("small")) return { id: "small" };
     const waking = backends.states.small?.status === "starting";
     return { error: waking ? "The model is still waking up. Try again in a few seconds." : "No model is running yet. Open Settings → Downloads to set one up." };
@@ -200,7 +199,7 @@ export const agent = {
       const brain = backends.brain === "loop" ? "loop" : "spark";
       const level = effortLevel(brain, settings.reasoningEffort);
       const plan = effortPlan(brain, level);
-      const route = await this.route(plan);
+      const route = await this.route();
       if (route.error) throw new Error(route.error);
       const model = MODELS[route.id];
       reply.model = route.id;
@@ -232,10 +231,10 @@ export const agent = {
         let last = 0;
         const thinkStart = Date.now();
         let thinkEnd = 0;
-        // After a step that thought past its budget, the next one answers without thinking (same loops).
+        // After a step that thought past its budget, the next one answers without thinking.
         const think = plan.think && !rush;
         rush = false;
-        const maxTokens = Math.max(256, Math.min(STEP_TOKENS[think ? level : "instant"], context - budget));
+        const maxTokens = Math.max(256, Math.min(think ? (plan.stepTokens ?? STEP_TOKENS[level]) : STEP_TOKENS.instant, context - budget));
         for await (const part of stream({
           url: model.url(),
           model: model.id,

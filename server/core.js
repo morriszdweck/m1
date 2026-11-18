@@ -98,7 +98,7 @@ export const DEFAULTS = {
   contextV: 2,
   toolOutputLimit: 1200,
   temperature: 1.0,
-  reasoningEffort: "medium", // instant | medium | high | max (Max is Loop only)
+  reasoningEffort: "medium", // instant | medium | high (Loop: instant = thinking off, medium = on)
   smallQuant: "Q4_K_M",
   smallURL: "http://127.0.0.1:8280/v1",
   guardianURL: "http://127.0.0.1:8776",
@@ -112,9 +112,9 @@ const CHOICES = {
   personality: Object.keys(PERSONALITIES),
   approvalMode: ["askAlways", "approveForMe", "fullAuto"],
   theme: ["system", "light", "dark"],
-  // Spark has Instant, Medium and High; SenseNova Loop adds Max (see brains.js). A saved "low"
-  // (builds 29-33) isn't here any more, so it goes back to the default, Medium.
-  reasoningEffort: ["instant", "medium", "high", "max"],
+  // Spark has Instant, Medium and High; SenseNova Loop has a thinking toggle (see brains.js). A
+  // saved "low" or "max" (builds 29-33) isn't here any more, so it goes back to Medium (thinking on).
+  reasoningEffort: ["instant", "medium", "high"],
 };
 
 const saved = load("settings.json", {});

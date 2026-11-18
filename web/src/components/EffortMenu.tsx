@@ -1,8 +1,9 @@
-// Reasoning effort, at the right of the message box. The button names the level;
-// clicking it opens a small slider. Spark has Instant (no thinking), Medium and High;
-// SenseNova Loop also has Max (it runs its middle layers 2 to 4 times).
+// Reasoning effort, at the right of the message box. With Spark the button names the level
+// and clicking it opens a small slider: Instant (no thinking), Medium and High. SenseNova Loop
+// has two levels, so it gets a Think toggle instead: on is Medium, off is Instant.
 
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { Lightbulb } from "lucide-react";
 import { api } from "../api";
 import { errorToast, useStore } from "../store";
 import type { ReasoningEffort } from "../types";
@@ -13,19 +14,19 @@ import { Menu } from "./ui";
 const PAD = 20;
 const at = (i: number, last: number) => `calc(${PAD}px + (100% - ${2 * PAD}px) * ${i / last})`;
 
-const LABELS: Record<ReasoningEffort, string> = { instant: "Instant", medium: "Medium", high: "High", max: "Max" };
+const LABELS: Record<ReasoningEffort, string> = { instant: "Instant", medium: "Medium", high: "High" };
 const SPARK: ReasoningEffort[] = ["instant", "medium", "high"];
 
-/** The stop a saved effort shows as when this brain doesn't have it (Spark has no Max). */
+/** The stop a saved effort shows as when this brain doesn't have it. */
 function stopFor(levels: ReasoningEffort[], saved: ReasoningEffort) {
   if (levels.includes(saved)) return saved;
-  if (saved === "max") return levels[levels.length - 1];
   return levels.includes("medium") ? "medium" : levels[0];
 }
 
 export function EffortMenu() {
   const saved = useStore((s) => s.settings?.reasoningEffort) ?? "medium";
   const efforts = useStore((s) => s.parts.find((p) => p.id === "small")?.efforts);
+  if (efforts?.length === 2) return <ThinkToggle off={efforts[0]} on={efforts[1]} saved={saved} />;
   const LEVELS = (efforts?.length ? efforts : SPARK).map((value) => ({ value, label: LABELS[value] }));
   const index = Math.max(0, LEVELS.findIndex((l) => l.value === stopFor(LEVELS.map((l) => l.value), saved)));
 
@@ -41,6 +42,39 @@ export function EffortMenu() {
       )}
       items={() => <EffortSlider index={index} levels={LEVELS} />}
     />
+  );
+}
+
+/** Thinking on or off. Anything but the off level counts as on (a saved High is Medium here). */
+function ThinkToggle({ off, on, saved }: { off: ReasoningEffort; on: ReasoningEffort; saved: ReasoningEffort }) {
+  const [pending, setPending] = useState<boolean | null>(null);
+  // The saved setting comes back from the server; until then the button shows the new state.
+  useEffect(() => {
+    setPending(null);
+  }, [saved]);
+  const thinking = pending ?? saved !== off;
+
+  function flip() {
+    const next = !thinking;
+    setPending(next);
+    api("PATCH", "/api/settings", { reasoningEffort: next ? on : off }).catch((e) => {
+      setPending(null);
+      errorToast(e);
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      className={cx("mode-btn think-btn", thinking && "on")}
+      onClick={flip}
+      aria-pressed={thinking}
+      aria-label="Think before answering"
+      title={thinking ? "Thinking is on: it reasons before it answers" : "Thinking is off: it answers right away"}
+    >
+      <Lightbulb size={16} strokeWidth={2} />
+      <span>Think</span>
+    </button>
   );
 }
 
