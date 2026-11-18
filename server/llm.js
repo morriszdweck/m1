@@ -8,10 +8,11 @@ import { splitThink } from "./think.js";
 /**
  * Streams a chat completion. Yields {content}, then {usage} and {timings} when the
  * server reports them. think turns thinking on; sparkEffort is Spark's own "low" or
- * "high" (null for SenseNova Loop, whose template only has thinking on or off; its
- * loops are set when it loads, see brains.js). Sampling is each maker's recommended one.
+ * "high" (null for SenseNova Loop, whose template only has thinking on or off). thinkCap
+ * makes the engine close the thinking after that many tokens, so the model answers from
+ * what it has (see brains.js). Sampling is each maker's recommended one.
  */
-export async function* stream({ url, model, messages, temperature = 1.0, maxTokens = 1024, stop, think = true, sparkEffort = "high", topK = 0, signal }) {
+export async function* stream({ url, model, messages, temperature = 1.0, maxTokens = 1024, stop, think = true, sparkEffort = "high", topK = 0, thinkCap = null, signal }) {
   const kwargs = think ? { enable_thinking: true, ...(sparkEffort && { reasoning_effort: sparkEffort }) } : { enable_thinking: false };
   if (!isLocal(url)) throw new Error("Refusing a model address that isn't on this computer.");
   let res;
@@ -33,6 +34,7 @@ export async function* stream({ url, model, messages, temperature = 1.0, maxToke
         stream_options: { include_usage: true },
         cache_prompt: true,
         chat_template_kwargs: kwargs,
+        ...(think && thinkCap && { reasoning_budget_tokens: thinkCap, reasoning_budget_message: "\n\nI'm out of thinking time, so I'll answer now with what I have.\n" }),
       }),
     });
   } catch (e) {

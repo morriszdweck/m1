@@ -61,7 +61,7 @@ function toolsBlock(tools, brain) {
 const TOOL_RULES = (device) =>
   `Call one function at a time, then wait for its result. Answer chat, math, writing, code and knowledge questions yourself; call a function only when the request needs the ${device}, files, the web or memory. Questions about this conversation need no function. After a result, answer as soon as you know enough. When the user asks you to remember something, save it with remember as a fact about them ("remember that I made you" → "Made M1."). Also use remember when they tell you a lasting fact about themself, and forget when they ask you to forget something.`;
 
-export function systemPrompt({ tools, query, project, brain = "spark" }) {
+export function systemPrompt({ tools, query, project, brain = "spark", effortHint = null }) {
   // Both templates put their tools block at the top of the system turn, so M1's comes
   // first here and the prompt reads the way the brain was trained on.
   return [
@@ -73,6 +73,8 @@ export function systemPrompt({ tools, query, project, brain = "spark" }) {
       : `Now: ${now()}. Workspace: ${tilde(settings.workspace)}`,
     memory.promptBlock(query),
     tools.length ? TOOL_RULES(DEVICE) : "",
+    // Last, so changing the effort keeps the rest of the prompt cached.
+    effortHint ?? "",
   ]
     .filter(Boolean)
     .join("\n");

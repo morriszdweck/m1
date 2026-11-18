@@ -1,6 +1,6 @@
 // Reasoning effort, at the right of the message box. The button names the level;
 // clicking it opens a small slider. Spark has Instant (no thinking), Medium and High;
-// SenseNova Loop also has Low and Max (it runs its middle layers 1 to 4 times).
+// SenseNova Loop also has Low and Max (how hard it's told to think, see server/brains.js).
 
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { api } from "../api";
