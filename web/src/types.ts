@@ -66,8 +66,6 @@ export type Part = {
   live?: boolean;
   quant?: string;
   quants?: Quant[];
-  /** The brain's effort stops, lowest first. */
-  efforts?: ReasoningEffort[];
   /** Set on the brain when it was added from Hugging Face. */
   custom?: CustomModel;
 };
@@ -103,7 +101,7 @@ export type ModelResolution = {
 
 export type ApprovalMode = "askAlways" | "approveForMe" | "fullAuto";
 
-/** How hard the brain works before it answers. Instant doesn't think. SenseNova Loop has only Instant (thinking off) and Medium (on). */
+/** How long Spark thinks before it answers. Instant doesn't think. */
 export type ReasoningEffort = "instant" | "medium" | "high";
 
 

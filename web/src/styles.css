@@ -1892,12 +1892,6 @@ input[type="range"] {
   background: var(--hover-strong);
   color: var(--fg);
 }
-/* SenseNova Loop's Think toggle: blue while thinking is on. */
-.mode-btn.think-btn.on,
-.mode-btn.think-btn.on:hover {
-  background: var(--accent-soft);
-  color: var(--accent-text);
-}
 
 .attachments {
   display: flex;

@@ -25,7 +25,6 @@ export const DATA =
 export const DIRS = {
   models: path.join(DATA, "models"),
   engine: path.join(DATA, "engine"),
-  loopEngine: path.join(DATA, "engine-loop"), // SenseNova's llama.cpp, for SenseNova Loop (see brains.js)
   tools: path.join(DATA, "tools"),
   logs: path.join(DATA, "logs"),
   uploads: path.join(DATA, "uploads"),
@@ -98,7 +97,7 @@ export const DEFAULTS = {
   contextV: 2,
   toolOutputLimit: 1200,
   temperature: 1.0,
-  reasoningEffort: "medium", // instant | medium | high (Loop: instant = thinking off, medium = on)
+  reasoningEffort: "medium", // instant | medium | high
   smallQuant: "Q4_K_M",
   smallURL: "http://127.0.0.1:8280/v1",
   guardianURL: "http://127.0.0.1:8776",
@@ -106,14 +105,19 @@ export const DEFAULTS = {
 };
 
 const URL_KEYS = new Set(["smallURL", "guardianURL", "browserURL"]);
+/** Download sizes offered for each model, smallest first. Sizes are bytes on Hugging Face. */
+export const QUANTS = {
+  small: [
+    { id: "Q4_K_M", label: "Balanced", bytes: 3.54e9, note: "Recommended" },
+    { id: "Q8_0", label: "Best", bytes: 4.38e9, note: "Near full quality" },
+  ],
+};
+
 const CHOICES = {
-  // Both brains come as Q4_K_M and Q8_0 (see brains.js), so one setting picks the size of whichever runs.
-  smallQuant: ["Q4_K_M", "Q8_0"],
+  smallQuant: QUANTS.small.map((q) => q.id),
   personality: Object.keys(PERSONALITIES),
   approvalMode: ["askAlways", "approveForMe", "fullAuto"],
   theme: ["system", "light", "dark"],
-  // Spark has Instant, Medium and High; SenseNova Loop has a thinking toggle (see brains.js). A
-  // saved "low" or "max" (builds 29-33) isn't here any more, so it goes back to Medium (thinking on).
   reasoningEffort: ["instant", "medium", "high"],
 };
 
@@ -160,7 +164,6 @@ export function isLocal(url) {
   }
 }
 
-/** The brain. backends.js fills in id and label for the one this computer runs. */
 export const MODELS = {
   small: { id: "Spark-X2.6-4B", label: "Spark X2.6 4B", url: () => settings.smallURL, temperature: () => settings.temperature },
 };

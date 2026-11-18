@@ -1,10 +1,10 @@
 # M1
 
-A private AI agent for your Mac or Linux computer that runs **SenseNova Loop 9B** (16 GB of memory or more) or **Spark X2.6 4B** (8 GB) entirely on your computer, with a clean web interface in your browser.
+A private AI agent for your Mac or Linux computer that runs **Spark X2.6 4B** entirely on your computer, with a clean web interface in your browser.
 
 - **Chat** with full Markdown: tables, code with highlighting and copy buttons, math, task lists.
 - **Does things on your computer**: runs commands, reads and writes files, searches and reads the web, opens apps and links, sets reminders, uses the clipboard, and clicks around websites with [Betterwright](https://www.npmjs.com/package/betterwright).
-- **Thinks when you ask**, from the button beside the message box. With SenseNova Loop it's a **Think** toggle: on, it reasons before it answers; off, it answers right away. Either way the model runs as released (2 loops). With Spark it's a slider with three stops: **Instant**, **Medium** (thinks briefly) and **High** (thinks it through). The reasoning stays folded away; tap it to read it.
+- **Thinks as hard as you ask**: the effort slider beside the message box picks **Instant** (answers straight away), **Medium** (thinks briefly) or **High** (thinks it through). The reasoning stays folded away; tap it to read it.
 - **Text in, text out**: attach text files and documents (PDF, Word, code, CSV and more). No voice or pictures.
 - **Three safety modes**: *Ask for Approval*, *Approve for Me* and *Full Auto*. Approve for Me needs the [Auto 150M](https://huggingface.co/ProCreations/auto-150m-3) classifier, which approves safe actions and asks you about the rest; picking it downloads Auto 150M first. Commands that could wipe data always ask.
 - **Choose project**: the button under the message box ties a chat to one folder. The agent then works only there: file tools refuse paths outside it, and shell commands run in a sandbox that can write only inside the folder and can't read the rest of your home folder (`sandbox-exec` on macOS, [bubblewrap](https://github.com/containers/bubblewrap) on Linux; without bubblewrap, commands that name a path outside the folder are refused and every command asks you first). Recent projects are one click away.
@@ -36,7 +36,7 @@ Afterwards, open it from Applications, Spotlight or your app menu, or with `m1`.
 
 It keeps itself up to date: every push to `main` is published as a release, new versions download in the background and go in when nothing is running, and if one doesn't start the previous version comes back. Turn this off in Settings → General; `m1 update` gets the newest version right away.
 
-Requirements: an Apple silicon Mac with macOS 14 or later, or a 64-bit Linux computer (see [Linux](#linux)), and free space: about 7.5 GB for everything with SenseNova Loop (6 GB for chat only), or 5 GB with Spark (3.6 GB for chat only).
+Requirements: an Apple silicon Mac with macOS 14 or later, or a 64-bit Linux computer (see [Linux](#linux)), and about 4 GB of free space for everything (about 2.7 GB for chat only).
 
 From a clone instead (it won't update itself; use `git pull`): double-click **M1.command** on macOS, run `scripts/start.sh`, or run `npm ci && npm run build && npm start` (Node.js 22 or newer).
 
@@ -65,30 +65,26 @@ sudo apt install wl-clipboard xclip libnotify-bin pandoc
 | Part | What it is | Size |
 | --- | --- | --- |
 | AI engine | [llama.cpp](https://github.com/ggml-org/llama.cpp) server, latest release | ~30 MB |
-| Brain, 16 GB or more | [SenseNova Loop 9B](https://huggingface.co/sensenova/SenseNova-Loop-9B-GGUF) by SenseNova (GGUF, Q4_K_M; Q8_0 in Settings with 24 GB), plus [SenseNova's llama.cpp](https://github.com/OpenSenseNova/llama.cpp) with M1's loop patch (`engine/`), which this model needs | 5.8 GB + ~15 MB |
-| Brain, under 16 GB | [Spark X2.6 4B](https://huggingface.co/XHToken/Spark-X2.6-4B-GGUF) by XHToken (GGUF, Q4_K_M; Q8_0 in Settings) | 3.5 GB |
+| Brain | [Spark X2.6 4B](https://huggingface.co/XHToken/Spark-X2.6-4B-GGUF) by XHToken (GGUF, Q4_K_M; Q8_0 in Settings) | 3.5 GB |
 | Safety helper | Auto 150M, run with Python through `uv` | ~1.1 GB (none if Liquid Agent already has it) |
 | Dictation | Parakeet TDT-CTC 110M (int8 ONNX) through sherpa-onnx, fetched the first time you tap the mic | ~200 MB |
 | Web helper | Betterwright and its browser | ~250 MB |
 
-SenseNova Loop goes to an Apple silicon Mac or a Linux x64 computer with a Vulkan driver, with 16 GB of memory or more; everything else gets Spark. `M1_BRAIN=spark` or `M1_BRAIN=loop` picks one. A computer that had Spark keeps using it while Loop downloads, then removes it.
-
 Files live in `~/Library/Application Support/M1` on macOS and `~/.local/share/m1` on Linux. Settings → Downloads switches model sizes (the old size keeps answering until the new one is ready) and removes any part.
 
-**Advanced: your own model.** Settings → Advanced → Brain model → **Use a model from Hugging Face** takes a link such as `https://huggingface.co/<org>/<model>-GGUF`. M1 reads the repository's GGUF list, groups split files, picks a size that should fit this computer, checks the GGUF header and chat template, and runs it on the same llama.cpp engine. A `blob` link to one `.gguf` file preselects that file. Public repositories work directly; for a gated or private one, accept its terms on Hugging Face and set `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`) before starting M1. Only text GGUF models are used here. Switch back to the built-in brain at any time. A model you add hasn't been tested with M1's tools, so while it answers, Full Auto works like Approve for Me and Auto 150M checks each action.
+**Advanced: your own model.** Settings → Advanced → Brain model → **Use a model from Hugging Face** takes a link such as `https://huggingface.co/<org>/<model>-GGUF`. M1 reads the repository's GGUF list, groups split files, picks a size that should fit this computer, checks the GGUF header and chat template, and runs it on the same llama.cpp engine. A `blob` link to one `.gguf` file preselects that file. Public repositories work directly; for a gated or private one, accept its terms on Hugging Face and set `HF_TOKEN` (or `HUGGING_FACE_HUB_TOKEN`) before starting M1. Only text GGUF models are used here. Switch back to the built-in Spark X2.6 4B at any time. A model you add hasn't been tested with M1's tools, so while it answers, Full Auto works like Approve for Me and Auto 150M checks each action.
 
 ## How it works
 
 ```
 browser ──HTTP/WebSocket──▶ server/ (Node, 127.0.0.1:8270)
-                              ├─ llama-server  Brain          :8280  (Loop 9B, Spark 4B or your GGUF)
+                              ├─ llama-server  Brain          :8280  (Spark X2.6 4B or your GGUF)
                               ├─ guardian/     Auto 150M      :8776
                               ├─ dictation/    Parakeet 110M  :8778
                               └─ bridge/       Betterwright   :8777
 ```
 
-- `server/brains.js` lists the two brains, which one this computer gets, and what each stop on the effort slider means for each.
-- `server/agent.js` runs the agent loop. Both brains think in `<think>` tags (`server/think.js`). Spark writes tool calls as `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value>` and takes `enable_thinking` and `reasoning_effort` (Instant = off, Medium = low, High = high). SenseNova Loop writes Qwen's `<tool_call><function=…><parameter=…>` and takes `enable_thinking`; its loop count is set when it loads (`LLAMA_SENSENOVA_LOOPS`, from `engine/sensenova-loops.patch`), so moving between loop counts reloads it. `server/toolparser.js` reads both and the other common forms.
+- `server/agent.js` runs the agent loop. Spark writes tool calls in its native `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value>` format and its thinking in `<think>` tags (`server/think.js`); the effort slider goes to its chat template as `enable_thinking` and `reasoning_effort` (Instant = off, Medium = low, High = high); `server/toolparser.js` reads that and the other common forms.
 - `server/models.js` reads Hugging Face links, finds and groups GGUF files, picks a size for this computer and checks a model's header before it runs.
 - `server/prompt.js` keeps prompts small: a short system prompt, only relevant memories, and older tool results trimmed to fit the context budget.
 - `server/remote.js` is remote control: it keeps an outbound WebSocket to the relay (`relay/rc_relay.py`) and replays encrypted requests from paired browsers against the local server. `relay/site/` is the page at rc.mincoffical.codes, which loads the app from your computer through that tunnel.
